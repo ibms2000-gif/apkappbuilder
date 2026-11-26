@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "apkappbuilder",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {"directory":"./public","binding":"ASSETS","run_worker_first":["/api/*"]},
+  "observability": {"enabled":true,"traces":{"enabled":true}},
+  "vars": {
+    "GITHUB_REPOSITORY":"ibms2000-gif/apkappbuilder","GITHUB_REF":"main",
+    "GROQ_MODEL":"openai/gpt-oss-20b","GEMINI_MODEL":"gemini-3.8-flash","AI_PROVIDER":"auto",
+    "DEVICE_DAILY_LIMIT":"2","GROQ_DAILY_REQUEST_CAP":"40","GEMINI_DAILY_REQUEST_CAP":"40"
+  },
+  "d1_databases":[{"binding":"DB","database_name":"apkappbuilder-db","database_id":"REPLACE_WITH_D1_DATABASE_ID","migrations_dir":"migrations"}],
+  "r2_buckets":[{"binding":"BUILDS","bucket_name":"apkappbuilder-builds"}]
+}
