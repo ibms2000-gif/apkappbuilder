@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "apkappbuilder",
+  "account_id": "1af045031826254cba5e2039a6454347",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-26",
   "compatibility_flags": ["nodejs_compat"],
