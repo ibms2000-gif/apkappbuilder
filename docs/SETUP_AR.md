@@ -1,93 +1,128 @@
 # إعداد وتشغيل APK App Builder
 
-هذا المستودع يحتوي على MVP أولي. لكي يتحول إلى خدمة عاملة، يلزم ربطه بحساب Cloudflare وإضافة مفاتيح Groq/Gemini ومفتاح تشغيل GitHub Actions. لا تضع أي مفتاح داخل ملفات المصدر.
+## الحالة الحالية
 
-## 1. تجهيز المتطلبات
+- تم إنشاء قاعدة D1 باسم `apkappbuilder-db` في حساب Cloudflare المتصل.
+- تم تطبيق جداول `projects` و`device_usage` و`provider_usage` والفهرس الخاص بالمشاريع.
+- تم تثبيت معرّف D1 ومعرّف حساب Cloudflare في `wrangler.jsonc`.
+- لم يتم إنشاء R2 بعد؛ حسابك يطلب تفعيل R2 من لوحة Cloudflare أولاً.
+- تم تجهيز سير عمل يدوي للنشر: **Actions → Deploy APK App Builder to Cloudflare**.
 
-- حساب Cloudflare.
-- حساب Groq API ومفتاح API.
-- مشروع Google AI Studio ومفتاح Gemini API.
-- صلاحية إدارة المستودع وإضافة GitHub Actions secrets.
+## 1. فعّل R2 وأنشئ مساحة التخزين
 
-## الحالة الحالية لحساب Cloudflare\n\nأنشأت قاعدة D1 باسم `apkappbuilder-db` وربطت معرّفها في `wrangler.jsonc`، كما نفّذت جداول المشروع والفهارس فيها. قاعدة البيانات مستقلة عن قواعد مشاريعك الأخرى.\n\nلم أتمكن من إنشاء R2 لأن Cloudflare أعاد أن تفعيل R2 مطلوب من لوحة التحكم أولاً. فعّل R2 من Dashboard → R2 Object Storage، ثم أنشئ bucket باسم `apkappbuilder-builds` في نفس الحساب. لا تنشئ bucket باسم مختلف إلا بعد تعديل `wrangler.jsonc`.\n\n## 2. إنشاء موارد Cloudflare
+افتح [Cloudflare Dashboard](https://dash.cloudflare.com/) ثم:
 
-من مجلد المشروع شغّل:
+1. اختر الحساب المرتبط بالمشروع.
+2. افتح **R2 Object Storage**.
+3. اضغط **Get started / Enable R2** وأكمل خطوة التفعيل أو إعداد الفوترة التي تعرضها Cloudflare.
+4. أنشئ bucket بالاسم الدقيق: `apkappbuilder-builds`.
 
-```bash
-npm install
-npx wrangler login
-npx wrangler d1 create apkappbuilder-db
-npx wrangler r2 bucket create apkappbuilder-builds
-```
+هذا الاسم موجود في ملف `wrangler.jsonc`. لا تغيّره إلا إذا عدّلت الملف أيضاً.
 
-انسخ قيمة database_id التي يعرضها أمر D1، واستبدل النص `REPLACE_WITH_D1_DATABASE_ID` في ملف `wrangler.jsonc`.
+## 2. أنشئ Cloudflare API Token للنشر
 
-## 3. إعداد الأسرار
+من Cloudflare Dashboard افتح **My Profile → API Tokens → Create Token → Create Custom Token**.
 
-أنشئ قيمة عشوائية طويلة لاستخدامها كرمز داخلي بين Worker وGitHub Actions، مثلاً:
+اجعل الموارد محصورة في حسابك فقط، وأضف الصلاحيات التالية:
+
+| الخدمة | الصلاحية |
+|---|---|
+| Workers Scripts | Edit |
+| D1 | Edit |
+| Workers R2 Storage | Edit |
+
+لا تمنح صلاحية **All zones** أو صلاحيات حسابات أخرى؛ هذا المشروع لا يحتاجها. احتفظ بالرمز الناتج لأنه سيضاف إلى GitHub كسرّ باسم `CLOUDFLARE_API_TOKEN`.
+
+## 3. جهّز مفاتيح الذكاء الاصطناعي
+
+أنشئ مفاتيح API من:
+- [Groq Console](https://console.groq.com/keys)
+- [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+لا ترسل المفاتيح في المحادثة أو تضعها في ملفات الكود. أضفها إلى GitHub Secrets بالأسماء المحددة في الخطوة التالية.
+
+## 4. أنشئ GitHub Fine-grained Personal Access Token
+
+من [GitHub Developer Settings → Personal access tokens](https://github.com/settings/personal-access-tokens) أنشئ **Fine-grained token** بهذه الإعدادات:
+
+- Repository access: اختر **Only select repositories** ثم `apkappbuilder` فقط.
+- Repository permissions:
+  - **Actions: Read and write**.
+  - **Contents: Read-only**.
+  - **Metadata: Read-only** (تكون عادةً إلزامية).
+- لا تضف صلاحيات Issues أو Administration أو أسرار المستودع.
+
+يستخدم هذا الرمز من Worker لتشغيل workflow البناء `build-apk.yml` عند طلب بناء تطبيق. أضفه باسم `APKAPPBUILDER_GH_TOKEN`.
+
+## 5. أنشئ رمز ربط داخلياً
+
+أنشئ قيمة عشوائية طويلة على جهازك، مثلاً:
 
 ```bash
 openssl rand -hex 32
 ```
 
-احتفظ بالقيمة الناتجة؛ ستدخلها في Cloudflare وفي GitHub Actions دون وضعها في ملفات المشروع.
+احتفظ بها كقيمة واحدة؛ ستستخدمها باسم `APKAPPBUILDER_BUILD_TOKEN` في GitHub. سير عمل النشر ينسخها إلى Worker باسم `BUILD_TOKEN`، وسير عمل البناء يستخدم النسخة نفسها للتحقق من طلبات المصدر ورفع APK.
 
-أضف أسرار Worker:
+## 6. أضف GitHub Actions Secrets
 
-```bash
-npx wrangler secret put GROQ_API_KEY
-npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put BUILD_TOKEN
-npx wrangler secret put GH_TOKEN
-```
+في المستودع افتح:
+**Settings → Secrets and variables → Actions → New repository secret**
 
-- `GROQ_API_KEY`: مفتاح Groq.
-- `GEMINI_API_KEY`: مفتاح Gemini.
-- `BUILD_TOKEN`: الرمز العشوائي المشترك بين Worker وGitHub Actions.
-- `GH_TOKEN`: GitHub fine-grained personal access token للمستودع، بصلاحية Actions: Read and write. يستخدمه Worker لتشغيل workflow فقط.
+أضف الأسرار التالية:
 
-## 4. إعداد أسرار GitHub
-
-افتح المستودع ثم Settings → Secrets and variables → Actions → New repository secret، وأضف:
-
-| الاسم | القيمة |
+| الاسم المطلوب | ماذا تضع فيه؟ |
 |---|---|
-| `APKAPPBUILDER_API_URL` | رابط Worker بعد نشره، مثل `https://apkappbuilder.<account>.workers.dev` |
-| `APKAPPBUILDER_BUILD_TOKEN` | نفس قيمة `BUILD_TOKEN` التي أضفتها إلى Cloudflare |
+| `CLOUDFLARE_API_TOKEN` | رمز Cloudflare الذي أنشأته في الخطوة 2 |
+| `GROQ_API_KEY` | مفتاح Groq API |
+| `GEMINI_API_KEY` | مفتاح Google Gemini API |
+| `APKAPPBUILDER_GH_TOKEN` | GitHub Fine-grained token من الخطوة 4 |
+| `APKAPPBUILDER_BUILD_TOKEN` | القيمة العشوائية من الخطوة 5 |
 
-لا تستخدم مسافة أخيرة في الرابط أو الرمز.
+لا تضع علامات اقتباس حول القيم ولا تضف مسافات في نهايتها.
 
-## 5. إعداد GitHub Actions والنشر\n\nأنشأت سير عمل يدوي باسم **Deploy APK App Builder to Cloudflare** في تبويب Actions. أضف الأسرار التالية في GitHub → Settings → Secrets and variables → Actions:\n\n| اسم السر | محتواه |\n|---|---|\n| `CLOUDFLARE_API_TOKEN` | رمز Cloudflare بصلاحيات Workers Scripts: Edit وD1: Edit وR2 Storage: Edit على هذا الحساب فقط |\n| `GROQ_API_KEY` | مفتاح Groq API |\n| `GEMINI_API_KEY` | مفتاح Gemini API |\n| `APKAPPBUILDER_GH_TOKEN` | GitHub fine-grained token لهذا المستودع، مع Actions: Read and write وContents: Read-only |\n| `APKAPPBUILDER_BUILD_TOKEN` | رمز عشوائي طويل مشترك بين Worker وسير عمل بناء APK |\n\nبعد إضافة الأسرار وتفعيل R2 وإنشاء bucket، افتح Actions وشغّل **Deploy APK App Builder to Cloudflare** يدوياً. عند نجاحه ينشر Worker والأصول، ويضع المفاتيح الأربعة في أسرار Worker.\n\n## 6. ربط عنوان Worker ببناء APK\n\nبعد النشر، انسخ عنوان Worker من ناتج النشر أو صفحة Workers & Pages. ثم أضف GitHub Actions secret باسم `APKAPPBUILDER_API_URL` وقيمته عنوان Worker فقط، دون `/api` في النهاية. احتفظ أيضاً بـ `APKAPPBUILDER_BUILD_TOKEN`؛ فبناء APK يحتاجه لرفع الملف إلى Worker.\n\n## 7. تطبيق قاعدة البيانات والنشر يدويًا (بديل)
+## 7. انشر المنصة
 
-بعد تعديل معرّف D1 في `wrangler.jsonc`:
+بعد تفعيل R2 وإنشاء bucket وإضافة الأسرار الخمسة:
 
-```bash
-npx wrangler d1 migrations apply apkappbuilder-db --remote
-npx wrangler deploy
-```
+1. افتح تبويب **Actions** في المستودع.
+2. اختر **Deploy APK App Builder to Cloudflare**.
+3. اضغط **Run workflow** على الفرع `main`.
+4. انتظر حتى تنتهي خطوات فحص TypeScript ونشر Worker والأصول.
 
-افتح رابط Worker. يجب أن يعرض المسار `/api/health` استجابة JSON تتضمن `ok: true`.
+سير عمل النشر يطبّق ترحيلات قاعدة البيانات، وينشر الموقع وAPI، ثم يضيف أسرار Groq وGemini وGitHub ورمز الربط إلى Worker. لا يطبع قيم الأسرار في السجلات.
 
-## 6. كيف يعمل المسار
+## 8. أضف عنوان Worker إلى GitHub
 
-1. يرسل المتصفح الوصف إلى Worker.
-2. يطبّق Worker الحصة اليومية ثم يستدعي Groq، ويجرب Gemini عند تعذر Groq.
-3. يحفظ Worker مصدر Kotlin في D1.
-4. يشغّل Worker workflow `build-apk.yml` عبر GitHub API.
-5. ينزّل GitHub Actions مصدر المشروع، ويركّبه في قالب Android ثابت، ثم يبني Debug APK.
-6. يرفع GitHub Actions الملف إلى Worker، ويحفظه Worker في R2.
-7. يظهر زر تنزيل APK في قائمة مشاريع المتصفح الذي أنشأه.
+بعد نجاح النشر، خذ عنوان Worker الذي يعرضه سجل النشر أو صفحة **Workers & Pages**. أضف في GitHub Actions Secret جديداً:
+
+- الاسم: `APKAPPBUILDER_API_URL`
+- القيمة: عنوان Worker فقط، مثال شكلي `https://apkappbuilder.<workers-subdomain>.workers.dev`، دون إضافة `/api` أو شرطة مائلة في النهاية.
+
+هذا العنوان يستخدمه سير عمل بناء APK للاتصال بالمنصة وإرجاع ملف APK إلى R2.
+
+## 9. الاختبار
+
+افتح عنوان Worker ثم:
+
+- اختبر `/api/health` وتأكد من ظهور `ok: true`.
+- اكتب وصف تطبيق تجريبي واضغط إنشاء.
+- راقب **Actions → Build Android APK**.
+- بعد اكتمال البناء ارجع إلى قائمة المشاريع واضغط تنزيل APK.
 
 ## حدود النسخة الحالية
 
-- الحصة الافتراضية: محاولتان لكل معرّف متصفح يومياً، مع سقف داخلي قابل للتعديل لطلبات كل مزود. معرّف المتصفح محفوظ محلياً ويمكن تغييره؛ لذلك هذا حاجز تجريبي وليس نظام عضويات أو حماية احترافية من إساءة الاستخدام.
-- الحصص الداخلية لا تضمن أن مزود الذكاء الاصطناعي لن يرفض الطلب أو يفرض حداً أقل. راجع صفحة حدود الاستخدام في حساب Groq وGemini دورياً.
-- لا توجد معاينة Android مباشرة داخل المتصفح بعد؛ تعرض الصفحة المشاريع وحالة البناء والتنزيل.
-- المخرجات حالياً تطبيق Compose بملف MainActivity واحد. الوظائف التي تحتاج صلاحيات حساسة أو خدمات خلفية أو موارد خارجية لا تضاف تلقائياً.
-- ينتج البناء الحالي Debug APK تجريبياً، وليس إصدار Release موقعاً بمفتاح نشر خاص بالمستخدم.
-- لا تفتح الخدمة للعامة قبل إضافة تسجيل دخول/حماية من الروبوتات، ومراجعة الكود المولّد، وضبط حصص مزودي الذكاء الاصطناعي.
-- لا ترسل كلمات مرور أو مفاتيح أو بيانات شخصية حساسة في البرومبت. راجع شروط خصوصية مزودي الذكاء الاصطناعي قبل تشغيل الخدمة العامة.
+- الحصة الافتراضية محاولتان يومياً لكل معرّف متصفح. هذا حاجز تجريبي فقط؛ معرّف المتصفح محفوظ محلياً ويمكن تغييره، فلا تعتبره حماية ضد إساءة الاستخدام أو بديلاً عن نظام مستخدمين.
+- توجد حدود داخلية يومية للمزودين، لكنها لا تتجاوز ولا تلغي حدود Groq أو Gemini الفعلية.
+- لا توجد معاينة Android مباشرة في المتصفح حالياً.
+- المخرجات الحالية تطبيق Compose أولي بملف `MainActivity.kt` واحد، ولا تنشئ تلقائياً خدمات خلفية أو صلاحيات حساسة أو موارد متعددة.
+- الناتج الحالي **Debug APK** للتجربة وليس إصدار Release موقعاً بمفتاح نشر.
+- لا تفتح المنصة للجمهور قبل إضافة تسجيل دخول، وحماية من الروبوتات، وحدود أقوى للحصص ومراجعة الكود الناتج.
+- تجنب إرسال كلمات المرور والمفاتيح والبيانات الحساسة في وصف التطبيق.
 
-## نماذج الذكاء الاصطناعي
+## نماذج الذكاء الاصطناعي الافتراضية
 
-القيم الافتراضية في `wrangler.jsonc` هي `openai/gpt-oss-20b` لـ Groq و`gemini-3.8-flash` لـ Gemini. يمكن تغييرهما من متغيرات Worker إذا تغير توفر النماذج أو الحصص. وضع `AI_PROVIDER=auto` يجعل Groq المحاولة الأولى وGemini احتياطياً.
+- Groq: `openai/gpt-oss-20b`
+- Gemini: `gemini-3.8-flash`
+
+يبدأ Worker بـ Groq، ثم يجرب Gemini عند تعذر Groq أو استنفاد سقفه الداخلي. يمكن تغيير أسماء النماذج من متغيرات Worker بعد مراجعة قائمة النماذج المتاحة لدى كل مزود.
