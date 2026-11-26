@@ -56,7 +56,7 @@ function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void 
   if (!/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(app.mainActivity)) throw new Error("يجب أن يحتوي الكود على MainActivity ترث ComponentActivity.");
   if (!/setContent\s*\{/.test(app.mainActivity)) throw new Error("لم يتم العثور على واجهة Jetpack Compose.");
   if (/\b(GROQ_API_KEY|GEMINI_API_KEY|GH_TOKEN|BUILD_TOKEN)\b/.test(app.mainActivity)) throw new Error("تم رفض كود يحتوي على مؤشرات لمفاتيح أو أسرار.");
-  app.appName = app.appName.replace(/[<>\r\n]/g, "").trim().slice(0, 48) || "تطبيقي الجديد";
+  app.appName = app.appName.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 48) || "تطبيقي الجديد";
 }
 function systemPrompt(packageName: string): string {
   return [
@@ -179,7 +179,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
   try {
     const result = await generateWithProviders(env, prompt, packageName);
     const appName = typeof body.appName === "string" && body.appName.trim()
-      ? body.appName.trim().replace(/[<>\r\n]/g, "").slice(0, 48) : result.app.appName;
+      ? body.appName.trim().replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 48) : result.app.appName;
     await env.DB.prepare(
       "INSERT INTO projects (id, device_id, prompt, app_name, package_name, main_activity, summary, provider, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generated')"
     ).bind(id, deviceId, prompt, appName, packageName, result.app.mainActivity, result.app.summary, result.provider).run();
