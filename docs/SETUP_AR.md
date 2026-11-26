@@ -9,7 +9,7 @@
 - مشروع Google AI Studio ومفتاح Gemini API.
 - صلاحية إدارة المستودع وإضافة GitHub Actions secrets.
 
-## 2. إنشاء موارد Cloudflare
+## الحالة الحالية لحساب Cloudflare\n\nأنشأت قاعدة D1 باسم `apkappbuilder-db` وربطت معرّفها في `wrangler.jsonc`، كما نفّذت جداول المشروع والفهارس فيها. قاعدة البيانات مستقلة عن قواعد مشاريعك الأخرى.\n\nلم أتمكن من إنشاء R2 لأن Cloudflare أعاد أن تفعيل R2 مطلوب من لوحة التحكم أولاً. فعّل R2 من Dashboard → R2 Object Storage، ثم أنشئ bucket باسم `apkappbuilder-builds` في نفس الحساب. لا تنشئ bucket باسم مختلف إلا بعد تعديل `wrangler.jsonc`.\n\n## 2. إنشاء موارد Cloudflare
 
 من مجلد المشروع شغّل:
 
@@ -57,7 +57,7 @@ npx wrangler secret put GH_TOKEN
 
 لا تستخدم مسافة أخيرة في الرابط أو الرمز.
 
-## 5. تطبيق قاعدة البيانات والنشر
+## 5. إعداد GitHub Actions والنشر\n\nأنشأت سير عمل يدوي باسم **Deploy APK App Builder to Cloudflare** في تبويب Actions. أضف الأسرار التالية في GitHub → Settings → Secrets and variables → Actions:\n\n| اسم السر | محتواه |\n|---|---|\n| `CLOUDFLARE_API_TOKEN` | رمز Cloudflare بصلاحيات Workers Scripts: Edit وD1: Edit وR2 Storage: Edit على هذا الحساب فقط |\n| `GROQ_API_KEY` | مفتاح Groq API |\n| `GEMINI_API_KEY` | مفتاح Gemini API |\n| `APKAPPBUILDER_GH_TOKEN` | GitHub fine-grained token لهذا المستودع، مع Actions: Read and write وContents: Read-only |\n| `APKAPPBUILDER_BUILD_TOKEN` | رمز عشوائي طويل مشترك بين Worker وسير عمل بناء APK |\n\nبعد إضافة الأسرار وتفعيل R2 وإنشاء bucket، افتح Actions وشغّل **Deploy APK App Builder to Cloudflare** يدوياً. عند نجاحه ينشر Worker والأصول، ويضع المفاتيح الأربعة في أسرار Worker.\n\n## 6. ربط عنوان Worker ببناء APK\n\nبعد النشر، انسخ عنوان Worker من ناتج النشر أو صفحة Workers & Pages. ثم أضف GitHub Actions secret باسم `APKAPPBUILDER_API_URL` وقيمته عنوان Worker فقط، دون `/api` في النهاية. احتفظ أيضاً بـ `APKAPPBUILDER_BUILD_TOKEN`؛ فبناء APK يحتاجه لرفع الملف إلى Worker.\n\n## 7. تطبيق قاعدة البيانات والنشر يدويًا (بديل)
 
 بعد تعديل معرّف D1 في `wrangler.jsonc`:
 
