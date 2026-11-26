@@ -11,6 +11,6 @@
     "GROQ_MODEL":"openai/gpt-oss-20b","GEMINI_MODEL":"gemini-3.8-flash","AI_PROVIDER":"auto",
     "DEVICE_DAILY_LIMIT":"2","GROQ_DAILY_REQUEST_CAP":"40","GEMINI_DAILY_REQUEST_CAP":"40"
   },
-  "d1_databases":[{"binding":"DB","database_name":"apkappbuilder-db","database_id":"REPLACE_WITH_D1_DATABASE_ID","migrations_dir":"migrations"}],
+  "d1_databases":[{"binding":"DB","database_name":"apkappbuilder-db","database_id":"d3668dd1-7aea-4e21-a11b-6f264039faec","migrations_dir":"migrations"}],
   "r2_buckets":[{"binding":"BUILDS","bucket_name":"apkappbuilder-builds"}]
 }
