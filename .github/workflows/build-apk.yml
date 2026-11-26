@@ -56,7 +56,7 @@ jobs:
               raise SystemExit("Invalid generated Android package name")
           if not code.startswith("package " + package + "\n"):
               raise SystemExit("Generated source package does not match project package")
-          if not re.search(r"class\\s+MainActivity\\s*:\\s*ComponentActivity\\s*\\(", code):
+          if not re.search(r"class\s+MainActivity\s*:\s*ComponentActivity\s*\(", code):
               raise SystemExit("MainActivity validation failed")
           os.makedirs("android-template/app/src/main/java", exist_ok=True)
           with open("android-template/app/src/main/java/MainActivity.kt", "w", encoding="utf-8") as f:
