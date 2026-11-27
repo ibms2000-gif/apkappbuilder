@@ -25,6 +25,18 @@ jobs:
           STATUS="$(curl --silent --show-error --output /tmp/home.html --write-out '%{http_code}' "$API_URL/")"
           test "$STATUS" = "200" || (echo "Website returned HTTP $STATUS" && exit 1)
           grep -q "APK App Builder" /tmp/home.html
+          if grep -Eq "آخر 30 مشروعاً|استعراض جميع مشاريع الطلاب المنشورة|فتح صفحة المشروع العامة|يتم نشر APK" /tmp/home.html; then
+            echo "Student page still contains a teacher-only project listing or public release link."
+            exit 1
+          fi
+          grep -q "احرص على تنزيل ملف التطبيق" /tmp/home.html
+          echo "Student page: download reminder present; teacher-only gallery and release page links hidden."
+
+          LIST_STATUS="$(curl --silent --output /tmp/project-list.json --write-out '%{http_code}' \
+            "$API_URL/api/projects?device_id=abcdefabcdefabcdefabcdefabcd")"
+          test "$LIST_STATUS" = "404" || (echo "Public project list returned HTTP $LIST_STATUS instead of 404" && exit 1)
+          echo "Student project-list endpoint: blocked (HTTP 404)"
+
           echo "Public website: OK (HTTP 200)"
 
           curl --fail --silent --show-error \
