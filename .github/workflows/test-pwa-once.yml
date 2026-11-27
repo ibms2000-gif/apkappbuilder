@@ -1,0 +1,74 @@
+name: One-time PWA Generation Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".test-pwa-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  pwa-generation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Generate and verify a temporary PWA
+        env:
+          API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          API_URL="${API_URL%/}"
+          test -n "$API_URL"
+          DEVICE_ID="$(cat /proc/sys/kernel/random/uuid)"
+          PROJECT_ID=""
+          cleanup() {
+            if [ -n "$PROJECT_ID" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
+              echo "Removing temporary PWA project..."
+              curl --silent --show-error --max-time 20 \
+                -X DELETE "$API_URL/api/admin/projects/$PROJECT_ID" \
+                -H "Authorization: Bearer $ADMIN_PASSWORD" >/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          RESPONSE="$(curl --fail --silent --show-error --max-time 220 \
+            -X POST "$API_URL/api/generate" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg device "$DEVICE_ID" \
+              --arg prompt "أنشئ تطبيق قائمة مهام يومية بسيط باللغة العربية. أريد عنوان مهامي، حقل لإضافة مهمة، زر إضافة، قائمة بالمهام، وإمكانية تحديد المهمة كمكتملة وحذفها. احفظ المهام محلياً في localStorage ولا تستخدم أي مكتبات أو اتصال إنترنت أو صور خارجية." \
+              '{deviceId:$device, creatorName:"اختبار PWA آلي", appName:"اختبار الويب التقدمي", appType:"pwa", prompt:$prompt}')")"
+
+          echo "$RESPONSE" | jq '{projectId,appName,appType,status,webUrl,message}'
+          PROJECT_ID="$(echo "$RESPONSE" | jq -r '.projectId // empty')"
+          WEB_URL="$(echo "$RESPONSE" | jq -r '.webUrl // empty')"
+          test -n "$PROJECT_ID"
+          test "$WEB_URL" = "/app/$PROJECT_ID/"
+          test "$(echo "$RESPONSE" | jq -r '.appType')" = "pwa"
+          test "$(echo "$RESPONSE" | jq -r '.status')" = "ready"
+
+          curl --fail --silent --show-error "$API_URL$WEB_URL" -o /tmp/generated-pwa.html
+          curl --fail --silent --show-error "$API_URL${WEB_URL}manifest.webmanifest" -o /tmp/generated-pwa-manifest.json
+          curl --fail --silent --show-error "$API_URL${WEB_URL}sw.js" -o /tmp/generated-pwa-sw.js
+          curl --fail --silent --show-error "$API_URL${WEB_URL}icon.svg" -o /tmp/generated-pwa-icon.svg
+
+          node - <<'NODE'
+          const fs = require("fs");
+          const m = JSON.parse(fs.readFileSync("/tmp/generated-pwa-manifest.json", "utf8"));
+          const html = fs.readFileSync("/tmp/generated-pwa.html", "utf8");
+          const sw = fs.readFileSync("/tmp/generated-pwa-sw.js", "utf8");
+          const icon = fs.readFileSync("/tmp/generated-pwa-icon.svg", "utf8");
+          if (m.display !== "standalone" || !m.start_url || !m.scope || !Array.isArray(m.icons) || m.icons.length < 2) throw new Error("Invalid generated PWA manifest");
+          if (!html.includes('rel="manifest"') || !html.includes("إضافة إلى الشاشة الرئيسية") || !html.includes("localStorage")) throw new Error("PWA installation or local-storage bridge missing");
+          if (!sw.includes("skipWaiting") || !sw.includes("caches.open") || !sw.includes("/app/")) throw new Error("PWA service worker cache is incomplete");
+          if (!icon.includes("<svg")) throw new Error("PWA icon is invalid");
+          console.log("PASS: generated PWA page, standalone manifest, install instructions, service worker and app icon.");
+          NODE
+
+          DETAIL="$(curl --fail --silent --show-error "$API_URL/api/projects/$PROJECT_ID?device_id=$DEVICE_ID")"
+          test "$(echo "$DETAIL" | jq -r '.appType')" = "pwa"
+          test "$(echo "$DETAIL" | jq -r '.webUrl')" = "$WEB_URL"
+          echo "PASS: project details expose the generated PWA URL."
