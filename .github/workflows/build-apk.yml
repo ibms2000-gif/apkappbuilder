@@ -88,9 +88,9 @@ jobs:
           ]
           source_body = "\n".join(body_lines)
           auto_imports = set(imports)
-          if re.search(r"\\.background\\s*\\(", source_body):
+          if ".background(" in source_body or ".background (" in source_body:
               auto_imports.add("import androidx.compose.foundation.background")
-          if "KeyboardActions(" in source_body:
+          if "KeyboardActions" in source_body:
               auto_imports.add("import androidx.compose.foundation.text.KeyboardActions")
           if "KeyboardOptions" in source_body:
               auto_imports.add("import androidx.compose.foundation.text.KeyboardOptions")
@@ -102,13 +102,15 @@ jobs:
               auto_imports.add("import androidx.compose.ui.platform.LocalContext")
           if "LocalFocusManager" in source_body:
               auto_imports.add("import androidx.compose.ui.platform.LocalFocusManager")
-          icon_variants = {"Default": "filled", "Filled": "filled", "Outlined": "outlined", "Rounded": "rounded", "TwoTone": "twotone"}
-          for variant, icon in re.findall(r"Icons\\.(Default|Filled|Outlined|Rounded|TwoTone)\\.([A-Z][A-Za-z0-9_]*)", source_body):
+          if "Icons." in source_body:
               auto_imports.add("import androidx.compose.material.icons.Icons")
-              auto_imports.add("import androidx.compose.material.icons." + icon_variants[variant] + "." + icon)
+              auto_imports.add("import androidx.compose.material.icons.filled.*")
+              auto_imports.add("import androidx.compose.material.icons.outlined.*")
+              auto_imports.add("import androidx.compose.material.icons.rounded.*")
+              auto_imports.add("import androidx.compose.material.icons.twotone.*")
           file_annotation = ""
-          if re.search(r"\\b(TopAppBar|TopAppBarDefaults|NavigationDrawerItem|ModalNavigationDrawer)\\b", source_body):
-              file_annotation = "@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)\\n\\n"
+          if any(symbol in source_body for symbol in ("TopAppBar", "TopAppBarDefaults", "NavigationDrawerItem", "ModalNavigationDrawer")):
+              file_annotation = "@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)\n\n"
           code = file_annotation + package_line + "\\n" + "\\n".join(sorted(auto_imports)) + "\\n\\n" + "\\n".join(body_lines).lstrip() + "\\n"
 
           os.makedirs("android-template/app/src/main/java", exist_ok=True)
