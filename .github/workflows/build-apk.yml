@@ -132,8 +132,8 @@ jobs:
               f.write("GENERATED_APP_NAME=" + name.replace("\n", " ").replace("\r", " ")[:48] + "\n")
               f.write("CREATOR_NAME=" + creator.replace("\n", " ").replace("\r", " ")[:80] + "\n")
               f.write("PROJECT_SUMMARY=" + summary.replace("\n", " ").replace("\r", " ")[:320] + "\n")
-              slug = re.sub(r"[^\w-]+", "-", name, flags=re.UNICODE).strip("-")[:40] or "student-app"
-              f.write("REPORT_NAME=" + slug + "-" + app.get("project_id", "project")[:8] + "-report.pdf\n")
+              report_name = "student-report-" + app.get("project_id", "project")[:8] + ".pdf"
+              f.write("REPORT_NAME=" + report_name + "\n")
           PY
 
       - name: Show normalized Kotlin imports
@@ -314,7 +314,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" "release-output/$REPORT_NAME" --repo "$GITHUB_REPOSITORY" --clobber
-          REPORT_URL="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets[] | select(.name | endswith("-report.pdf")) | .browser_download_url')"
+          REPORT_URL="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq --arg name "$REPORT_NAME" '.assets[] | select(.name == $name) | .browser_download_url')"
           test -n "$REPORT_URL"
           echo "REPORT_URL=$REPORT_URL" >> "$GITHUB_ENV"
 
@@ -325,24 +325,15 @@ jobs:
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
           set -euo pipefail
-          export RELEASE_URL APK_URL REPORT_URL
-          python3 - <<'PY'
-          import json, os, urllib.request
-          payload = {
-              "project_id": os.environ["PROJECT_ID"],
-              "release_url": os.environ["RELEASE_URL"],
-              "apk_url": os.environ["APK_URL"],
-              "report_url": os.environ["REPORT_URL"]
-          }
-          request = urllib.request.Request(
-              os.environ["API_URL"] + "/api/build/published",
-              data=json.dumps(payload).encode("utf-8"),
-              headers={"Authorization":"Bearer " + os.environ["BUILD_TOKEN"], "Content-Type":"application/json"},
-              method="POST"
-          )
-          with urllib.request.urlopen(request, timeout=30) as response:
-              print(response.read().decode("utf-8"))
-          PY
+          test -n "$REPORT_URL"
+          PAYLOAD="$(jq -n --arg id "$PROJECT_ID" --arg release "$RELEASE_URL" --arg apk "$APK_URL" --arg report "$REPORT_URL" '{project_id:$id,release_url:$release,apk_url:$apk,report_url:$report}')"
+          echo "Registering the public APK and PDF links with the platform..."
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST "$API_URL/api/build/published" \
+            -H "Authorization: Bearer $BUILD_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: apkappbuilder-build/1.0" \
+            --data "$PAYLOAD"
 
       - name: Report build failure
         if: failure()
