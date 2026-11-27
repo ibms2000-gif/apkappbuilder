@@ -77,7 +77,9 @@ jobs:
               f.write("GENERATED_PACKAGE=" + package + "\n")
               f.write("GENERATED_APP_NAME=" + name.replace("\n", " ").replace("\r", " ")[:48] + "\n")
               f.write("CREATOR_NAME=" + creator.replace("\n", " ").replace("\r", " ")[:80] + "\n")
-              f.write("PROJECT_SUMMARY=" + summary.replace("\n", " ").replace("\r", " ")[:500] + "\n")
+              f.write("PROJECT_SUMMARY=" + summary.replace("\n", " ").replace("\r", " ")[:320] + "\n")
+              slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()[:24] or "student-app"
+              f.write("REPORT_NAME=" + slug + "-" + os.environ.get("PROJECT_ID", "project")[:8] + "-report.pdf\n")
           PY
 
       - name: Build debug APK
@@ -176,7 +178,7 @@ jobs:
                   y -= leading
               return y
           page_w, page_h = A4
-          pdf_path = "release-output/student-achievement-report.pdf"
+          pdf_path = "release-output/" + os.environ["REPORT_NAME"]
           c = canvas.Canvas(pdf_path, pagesize=A4)
           c.setTitle("Student Achievement - " + app.get("app_name", "Android App"))
           c.setAuthor(app.get("creator_name", ""))
@@ -213,7 +215,8 @@ jobs:
           c.drawRightString(page_w-62, y-17, rtl("رقم المشروع: " + os.environ.get("PROJECT_ID", "")))
           y -= 70
           qr = qrcode.QRCode(version=5, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
-          qr.add_data(os.environ["APK_URL"])
+          download_url = os.environ["APK_URL"]
+          qr.add_data(download_url)
           qr.make(fit=True)
           qr_img = qr.make_image(fill_color="#10233f", back_color="white").convert("RGB")
           qr_bytes = BytesIO()
@@ -221,11 +224,16 @@ jobs:
           qr_bytes.seek(0)
           qr_size = 118
           c.setFillColor(colors.white)
-          c.roundRect(page_w/2-qr_size/2-16, y-qr_size-36, qr_size+32, qr_size+60, 12, fill=1, stroke=0)
+          c.roundRect(page_w/2-qr_size/2-16, y-qr_size-60, qr_size+32, qr_size+84, 12, fill=1, stroke=0)
           c.drawImage(ImageReader(qr_bytes), page_w/2-qr_size/2, y-qr_size-8, qr_size, qr_size, mask="auto")
           c.setFillColor(navy)
           c.setFont(bold_font, 11)
           c.drawCentredString(page_w/2, y-qr_size-24, rtl("امسح الرمز لتنزيل التطبيق"))
+          c.setFillColor(colors.HexColor("#526176"))
+          c.setFont("Helvetica", 5.8)
+          url_line = download_url.replace("https://", "")
+          c.drawCentredString(page_w/2, y-qr_size-43, url_line)
+          c.linkURL(download_url, (page_w/2-220, y-qr_size-50, page_w/2+220, y-qr_size-36), relative=0)
           c.setFillColor(teal)
           c.setFont("Helvetica", 8)
           c.drawCentredString(page_w/2, 76, "APK App Builder  |  GitHub Releases")
@@ -240,8 +248,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" "release-output/student-achievement-report.pdf" --repo "$GITHUB_REPOSITORY"
-          echo "REPORT_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/student-achievement-report.pdf" >> "$GITHUB_ENV"
+          gh release upload "$RELEASE_TAG" "release-output/$REPORT_NAME" --repo "$GITHUB_REPOSITORY"
+          echo "REPORT_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$REPORT_NAME" >> "$GITHUB_ENV"
 
       - name: Mark project as published in D1
         env:
