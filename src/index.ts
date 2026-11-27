@@ -407,7 +407,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (env.ADMIN_TOKEN && url.pathname === "/control/" + env.ADMIN_TOKEN && request.method === "GET") {
-      return env.ASSETS.fetch(new Request(new URL("/admin.html", url.origin), request));
+      const page = await env.ASSETS.fetch(new Request(new URL("/admin.html", url.origin), request));
+      const headers = new Headers(page.headers);
+      headers.set("cache-control", "no-store, max-age=0");
+      headers.set("referrer-policy", "no-referrer");
+      headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+      return new Response(page.body, { status: page.status, statusText: page.statusText, headers });
     }
     if (url.pathname === "/admin.html") return new Response("Not Found", { status: 404 });
     if (url.pathname.startsWith("/api/")) {
