@@ -79,21 +79,14 @@ jobs:
           source_lines = lines[1:]
           imports = [line.strip() for line in source_lines if line.strip().startswith("import ")]
           body_lines = [line for line in source_lines if not line.strip().startswith("import ")]
-          imports = [
-              line.replace(
-                  "import androidx.compose.ui.text.input.KeyboardOptions",
-                  "import androidx.compose.foundation.text.KeyboardOptions"
-              )
-              for line in imports
-          ]
+          # Replace incorrect/legacy imports with the package used by this Compose version.
+          imports = [line for line in imports if not line.endswith(".KeyboardOptions") and not line.endswith(".KeyboardActions")]
           source_body = chr(10).join(body_lines)
           auto_imports = set(imports)
-          if ".background(" in source_body or ".background (" in source_body:
-              auto_imports.add("import androidx.compose.foundation.background")
-          if "KeyboardActions" in source_body:
-              auto_imports.add("import androidx.compose.foundation.text.KeyboardActions")
           if "KeyboardOptions" in source_body:
               auto_imports.add("import androidx.compose.foundation.text.KeyboardOptions")
+          if "KeyboardActions" in source_body:
+              auto_imports.add("import androidx.compose.foundation.text.KeyboardActions")
           if "TextDecoration" in source_body:
               auto_imports.add("import androidx.compose.ui.text.style.TextDecoration")
           if "rememberSaveable" in source_body:
@@ -102,12 +95,13 @@ jobs:
               auto_imports.add("import androidx.compose.ui.platform.LocalContext")
           if "LocalFocusManager" in source_body:
               auto_imports.add("import androidx.compose.ui.platform.LocalFocusManager")
+          if ".background(" in source_body or ".background (" in source_body:
+              auto_imports.add("import androidx.compose.foundation.background")
           if "Icons." in source_body:
               auto_imports.add("import androidx.compose.material.icons.Icons")
-              auto_imports.add("import androidx.compose.material.icons.filled.*")
-              auto_imports.add("import androidx.compose.material.icons.outlined.*")
-              auto_imports.add("import androidx.compose.material.icons.rounded.*")
-              auto_imports.add("import androidx.compose.material.icons.twotone.*")
+              icon_variants = {"Default": "filled", "Filled": "filled", "Outlined": "outlined", "Rounded": "rounded", "TwoTone": "twotone"}
+              for variant, icon in re.findall(r"Icons\.(Default|Filled|Outlined|Rounded|TwoTone)\.([A-Z][A-Za-z0-9_]*)", source_body):
+                  auto_imports.add("import androidx.compose.material.icons." + icon_variants[variant] + "." + icon)
           file_annotation = ""
           if any(symbol in source_body for symbol in ("TopAppBar", "TopAppBarDefaults", "NavigationDrawerItem", "ModalNavigationDrawer")):
               file_annotation = "@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)" + chr(10) * 2
@@ -124,6 +118,13 @@ jobs:
               slug = re.sub(r"[^\w-]+", "-", name, flags=re.UNICODE).strip("-")[:40] or "student-app"
               f.write("REPORT_NAME=" + slug + "-" + app.get("project_id", "project")[:8] + "-report.pdf\n")
           PY
+
+      - name: Show normalized Kotlin imports
+        run: |
+          echo "Normalized imports:"
+          grep -n '^import ' android-template/app/src/main/java/MainActivity.kt || true
+          echo "Keyboard references:"
+          grep -n 'KeyboardOptions\|KeyboardActions' android-template/app/src/main/java/MainActivity.kt || true
 
       - name: Build debug APK
         working-directory: android-template
