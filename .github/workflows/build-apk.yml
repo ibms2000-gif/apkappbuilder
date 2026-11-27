@@ -27,16 +27,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Resolve project ID
         id: project
         env:
-          INPUT_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          INPUT_PROJECT_ID: ${{ inputs.project_id }}
         run: |
           set -euo pipefail
           PROJECT_ID="$INPUT_PROJECT_ID"
           if [ -z "$PROJECT_ID" ]; then
-            REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^\\.build-requests/[0-9a-fA-F-]{36}\\.txt$' | head -n 1 || true)"
+            REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^\.build-requests/[0-9a-fA-F-]{36}\.txt$' | head -n 1 || true)"
             test -n "$REQUEST_FILE" || (echo "No project rebuild request file found in this commit." && exit 1)
             PROJECT_ID="$(tr -d '[:space:]' < "$REQUEST_FILE")"
           fi
