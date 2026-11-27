@@ -56,4 +56,8 @@ jobs:
           put_secret GEMINI_API_KEY "$GEMINI_API_KEY"
           put_secret GH_TOKEN "$GH_TOKEN"
           put_secret BUILD_TOKEN "$BUILD_TOKEN"
-          put_secret ADMIN_TOKEN "$ADMIN_TOKEN"
+          if [ -n "${ADMIN_TOKEN:-}" ]; then
+            put_secret ADMIN_TOKEN "$ADMIN_TOKEN"
+          else
+            echo "ADMIN_TOKEN is not set yet; the hidden teacher dashboard will remain locked."
+          fi
