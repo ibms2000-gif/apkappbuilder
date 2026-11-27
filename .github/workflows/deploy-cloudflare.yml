@@ -40,6 +40,7 @@ jobs:
           GH_TOKEN: ${{ secrets.APKAPPBUILDER_GH_TOKEN }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           put_secret() {
@@ -60,4 +61,9 @@ jobs:
             put_secret ADMIN_TOKEN "$ADMIN_TOKEN"
           else
             echo "ADMIN_TOKEN is not set yet; the hidden teacher dashboard will remain locked."
+          fi
+          if [ -n "${ADMIN_PASSWORD:-}" ]; then
+            put_secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
+          else
+            echo "ADMIN_PASSWORD is not set yet; teacher login will remain locked until it is added."
           fi
