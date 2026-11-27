@@ -75,7 +75,7 @@ jobs:
               f.write(code)
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
               f.write("GENERATED_PACKAGE=" + package + "\n")
-              f.write("GENERATED_APP_NAME=" + re.sub(r"[\\r\\n]", " ", name)[:48] + "\n")
+              f.write("GENERATED_APP_NAME=" + name.replace("\n", " ").replace("\r", " ")[:48] + "\n")
           PY
 
       - name: Build debug APK
