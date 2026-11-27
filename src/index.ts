@@ -88,6 +88,10 @@ async function reserveDevice(db: D1Database, deviceId: string, limit: number): P
   ).bind(today(), deviceId, limit).first<{ generations: number }>();
   return result !== null;
 }
+async function releaseDeviceReservation(db: D1Database, deviceId: string): Promise<void> {
+  await db.prepare("UPDATE device_usage SET generations = CASE WHEN generations > 0 THEN generations - 1 ELSE 0 END WHERE usage_day = ? AND device_id = ?")
+    .bind(today(), deviceId).run();
+}
 async function reserveProvider(db: D1Database, provider: Provider, limit: number): Promise<boolean> {
   const result = await db.prepare(
     "INSERT INTO provider_usage (usage_day, provider, requests) VALUES (?, ?, 1) " +
@@ -257,7 +261,9 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
     }
     return json({ projectId: id, appName, summary: result.app.summary, provider: result.provider, status: buildStarted ? "building" : "generated", message }, 201);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "حدث خطأ أثناء التوليد." }, 502);
+    await releaseDeviceReservation(env.DB, deviceId).catch(() => undefined);
+    const message = error instanceof Error ? error.message : "حدث خطأ أثناء التوليد.";
+    return json({ error: message + " لم يتم احتساب المحاولة من حصتك اليومية." }, 502);
   }
 }
 async function handleProject(request: Request, env: Env, id: string): Promise<Response> {
@@ -285,14 +291,20 @@ async function handleUsage(request: Request, env: Env): Promise<Response> {
   const providers = await env.DB.prepare("SELECT provider, requests, input_tokens, output_tokens FROM provider_usage WHERE usage_day = ?").bind(today()).all();
   return json({ date: today(), device: { used: device?.generations || 0, limit: readLimit(env.DEVICE_DAILY_LIMIT, 2) }, platformProviders: providers.results || [] });
 }
-async function isBuildAuthorized(request: Request, env: Env): Promise<boolean> {
-  const expected = env.BUILD_TOKEN || "";
+async function tokenMatches(request: Request, expected: string | undefined): Promise<boolean> {
   const supplied = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!expected || !supplied || supplied.length !== expected.length) return false;
   const a = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(supplied)));
   const b = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(expected)));
-  let diff = 0; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
+}
+async function isBuildAuthorized(request: Request, env: Env): Promise<boolean> {
+  return tokenMatches(request, env.BUILD_TOKEN);
+}
+async function isAdminAuthorized(request: Request, env: Env): Promise<boolean> {
+  return tokenMatches(request, env.ADMIN_TOKEN);
 }
 async function buildSource(request: Request, env: Env): Promise<Response> {
   if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
@@ -333,9 +345,71 @@ async function buildFailure(request: Request, env: Env): Promise<Response> {
     .bind((body.error || "فشل بناء APK. راجع سجل GitHub Actions.").slice(0, 1000), new Date().toISOString(), body.project_id).run();
   return json({ ok: true });
 }
+async function dispatchDeleteRelease(env: Env, projectId: string): Promise<void> {
+  if (!env.GH_TOKEN) throw new Error("مفتاح GitHub غير مضبوط على الخادم.");
+  const repo = env.GITHUB_REPOSITORY || "ibms2000-gif/apkappbuilder";
+  const ref = env.GITHUB_REF || "main";
+  const response = await fetch("https://api.github.com/repos/" + repo + "/actions/workflows/delete-app-release.yml/dispatches", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + env.GH_TOKEN,
+      accept: "application/vnd.github+json",
+      "content-type": "application/json",
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "apkappbuilder-admin"
+    },
+    body: JSON.stringify({ ref, inputs: { project_id: projectId } })
+  });
+  if (!response.ok) throw new Error("تعذر بدء حذف التطبيق من GitHub (HTTP " + response.status + ").");
+}
+async function adminListProjects(request: Request, env: Env): Promise<Response> {
+  if (!(await isAdminAuthorized(request, env))) return json({ error: "رمز لوحة المعلم غير صحيح." }, 401);
+  const rows = await env.DB.prepare(
+    "SELECT id, app_name, creator_name, prompt, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects ORDER BY created_at DESC LIMIT 500"
+  ).all();
+  return json({ projects: rows.results || [] });
+}
+async function adminDeleteProject(request: Request, env: Env, id: string): Promise<Response> {
+  if (!(await isAdminAuthorized(request, env))) return json({ error: "رمز لوحة المعلم غير صحيح." }, 401);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "معرّف المشروع غير صالح." }, 400);
+  const p = await env.DB.prepare("SELECT id, status FROM projects WHERE id = ?")
+    .bind(id).first<{ id: string; status: string }>();
+  if (!p) return json({ error: "المشروع غير موجود أو سبق حذفه." }, 404);
+  if (p.status === "deleting") return json({ ok: true, status: "deleting", message: "الحذف جارٍ بالفعل." }, 202);
+  await env.DB.prepare("UPDATE projects SET status = 'deleting', error_message = NULL, updated_at = ? WHERE id = ?")
+    .bind(new Date().toISOString(), id).run();
+  try {
+    await dispatchDeleteRelease(env, id);
+    return json({ ok: true, status: "deleting", message: "بدأ حذف التطبيق وملفاته العامة." }, 202);
+  } catch (error) {
+    await env.DB.prepare("UPDATE projects SET status = ?, error_message = ?, updated_at = ? WHERE id = ?")
+      .bind(p.status, error instanceof Error ? error.message : "تعذر بدء الحذف.", new Date().toISOString(), id).run();
+    throw error;
+  }
+}
+async function buildDeleted(request: Request, env: Env): Promise<Response> {
+  if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
+  const body = await request.json() as { project_id?: string };
+  if (!body.project_id || !/^[0-9a-f-]{36}$/i.test(body.project_id)) return json({ error: "معرّف المشروع غير صالح." }, 400);
+  await env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(body.project_id).run();
+  return json({ ok: true, deleted: true });
+}
+async function buildDeletionFailure(request: Request, env: Env): Promise<Response> {
+  if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
+  const body = await request.json() as { project_id?: string; error?: string };
+  if (!body.project_id) return json({ error: "معرّف المشروع مفقود." }, 400);
+  await env.DB.prepare("UPDATE projects SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?")
+    .bind((body.error || "تعذر حذف الإصدار من GitHub.").slice(0, 1000), new Date().toISOString(), body.project_id).run();
+  return json({ ok: true });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (env.ADMIN_TOKEN && url.pathname === "/control/" + env.ADMIN_TOKEN && request.method === "GET") {
+      return env.ASSETS.fetch(new Request(new URL("/admin.html", url.origin), request));
+    }
+    if (url.pathname === "/admin.html") return new Response("Not Found", { status: 404 });
     if (url.pathname.startsWith("/api/")) {
       try {
         if (request.method === "POST" && url.pathname === "/api/generate") {
@@ -359,6 +433,19 @@ export default {
         }
         if (request.method === "POST" && url.pathname === "/api/build/failure") {
           return await buildFailure(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/build/deleted") {
+          return await buildDeleted(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/build/deletion-failed") {
+          return await buildDeletionFailure(request, env);
+        }
+        if (request.method === "GET" && url.pathname === "/api/admin/projects") {
+          return await adminListProjects(request, env);
+        }
+        const adminDeleteMatch = url.pathname.match(/^\/api\/admin\/projects\/([0-9a-f-]{36})$/i);
+        if (request.method === "DELETE" && adminDeleteMatch) {
+          return await adminDeleteProject(request, env, adminDeleteMatch[1]);
         }
         return json({ error: "المسار غير موجود." }, 404);
       } catch (error) {
