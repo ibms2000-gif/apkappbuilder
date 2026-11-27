@@ -1,1 +1,1 @@
-Live generation retry after parser and build normalization updates.
+Retry live generation after latest Worker deployment completed successfully.
