@@ -280,7 +280,28 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
       try {
-        const p = url.pathname.match(/^\/api\/projects\/([0-9a-f-]{36})$/i);
+        if (request.method === "POST" && url.pathname === "/api/generate") {
+          return await handleGenerate(request, env);
+        }
+        if (request.method === "GET" && url.pathname === "/api/projects") {
+          return await handleList(request, env);
+        }
+        const projectMatch = url.pathname.match(/^\/api\/projects\/([0-9a-f-]{36})$/i);
+        if (request.method === "GET" && projectMatch) {
+          return await handleProject(request, env, projectMatch[1]);
+        }
+        if (request.method === "GET" && url.pathname === "/api/usage") {
+          return await handleUsage(request, env);
+        }
+        if (request.method === "GET" && url.pathname === "/api/build/source") {
+          return await buildSource(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/build/published") {
+          return await buildPublished(request, env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/build/failure") {
+          return await buildFailure(request, env);
+        }
         return json({ error: "المسار غير موجود." }, 404);
       } catch (error) {
         console.error(JSON.stringify({ event: "request_error", path: url.pathname, error: error instanceof Error ? error.message : "unknown" }));
