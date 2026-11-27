@@ -168,7 +168,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
   try { body = await request.json() as typeof body; } catch { return json({ error: "بيانات الطلب غير صالحة." }, 400); }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length < 12 || prompt.length > 5000) return json({ error: "اكتب وصفاً من 12 إلى 5000 حرف." }, 400);
-  const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().replace(/[<>\\r\\n]/g, "").slice(0, 80) : "";
+  const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().replace(/[<>\r\n]/g, "").slice(0, 80) : "";
   if (creatorName.length < 2) return json({ error: "أدخل اسم الطالب أو منشئ التطبيق (حرفان على الأقل)." }, 400);
   if (!validDeviceId(body.deviceId)) return json({ error: "معرّف الجهاز غير صالح." }, 400);
   const deviceId = body.deviceId;
@@ -278,19 +278,9 @@ async function buildFailure(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/api/health") return json({ ok: true, service: "apkappbuilder", version: "0.1.0" });
     if (url.pathname.startsWith("/api/")) {
       try {
-        if (request.method === "POST" && url.pathname === "/api/generate") return await handleGenerate(request, env);
-        if (request.method === "GET" && url.pathname === "/api/projects") return await handleList(request, env);
-        if (request.method === "GET" && url.pathname === "/api/usage") return await handleUsage(request, env);
         const p = url.pathname.match(/^\/api\/projects\/([0-9a-f-]{36})$/i);
-        if (request.method === "GET" && p) return await handleProject(request, env, p[1]);
-        const d = url.pathname.match(/^\/api\/download\/([0-9a-f-]{36})$/i);
-        if (request.method === "GET" && d) return await downloadApk(request, env, d[1]);
-        if (request.method === "GET" && url.pathname === "/api/build/source") return await buildSource(request, env);
-        if (request.method === "POST" && url.pathname === "/api/build/published") return await buildPublished(request, env);
-        if (request.method === "POST" && url.pathname === "/api/build/failure") return await buildFailure(request, env);
         return json({ error: "المسار غير موجود." }, 404);
       } catch (error) {
         console.error(JSON.stringify({ event: "request_error", path: url.pathname, error: error instanceof Error ? error.message : "unknown" }));
