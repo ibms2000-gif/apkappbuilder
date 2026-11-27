@@ -1,0 +1,38 @@
+name: Verify APK App Builder Deployment
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy APK App Builder to Cloudflare
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public website and API
+        env:
+          API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$API_URL" || (echo "Missing APKAPPBUILDER_API_URL secret" && exit 1)
+          API_URL="${API_URL%/}"
+          STATUS="$(curl --silent --show-error --output /tmp/home.html --write-out '%{http_code}' "$API_URL/")"
+          test "$STATUS" = "200" || (echo "Website returned HTTP $STATUS" && exit 1)
+          grep -q "APK App Builder" /tmp/home.html
+          echo "Public website: OK (HTTP 200)"
+
+          curl --fail --silent --show-error \
+            "$API_URL/api/usage?device_id=abcdefabcdefabcdefabcdefabcd" \
+            -o /tmp/usage.json
+          node -e 'const d=require("/tmp/usage.json"); if (!d.device || typeof d.device.used !== "number" || typeof d.device.limit !== "number") process.exit(1); console.log("API and D1 database: OK; daily test quota " + d.device.used + "/" + d.device.limit);'
+
+          AUTH_STATUS="$(curl --silent --output /tmp/auth.json --write-out '%{http_code}' \
+            "$API_URL/api/build/source?project_id=00000000-0000-4000-8000-000000000000")"
+          test "$AUTH_STATUS" = "401" || (echo "Protected build API returned HTTP $AUTH_STATUS instead of 401" && exit 1)
+          echo "Protected build endpoint: OK"
