@@ -11,7 +11,7 @@ permissions:
 jobs:
   live-generation:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Generate one temporary test application and verify APK/PDF
         env:
@@ -46,11 +46,11 @@ jobs:
           fi
 
           STATUS="building"
-          for attempt in $(seq 1 180); do
-            CURRENT="$(curl --silent --show-error --max-time 15 \
+          for attempt in $(seq 1 90); do
+            CURRENT="$(curl --fail --silent --show-error --max-time 15 \
               "$API_URL/api/projects/$PROJECT_ID?device_id=$DEVICE_ID")"
             STATUS="$(echo "$CURRENT" | jq -r '.status // "unknown"')"
-            echo "Project status: $STATUS (check $attempt/180)"
+            echo "Project status: $STATUS (check $attempt/90)"
             if [ "$STATUS" = "ready" ]; then
               echo "$CURRENT" | jq '{status, downloadUrl, reportUrl, releaseUrl}'
               test "$(echo "$CURRENT" | jq -r '.downloadUrl // empty')" != ""
