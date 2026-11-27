@@ -302,19 +302,13 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
 async function handleProject(request: Request, env: Env, id: string): Promise<Response> {
   const deviceId = new URL(request.url).searchParams.get("device_id");
   if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const p = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects WHERE id = ? AND device_id = ?")
-    .bind(id, deviceId).first<{ id: string; app_name: string; creator_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string; release_url: string | null; apk_url: string | null; report_url: string | null }>();
+  const p = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, apk_url, report_url FROM projects WHERE id = ? AND device_id = ?")
+    .bind(id, deviceId).first<{ id: string; app_name: string; creator_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string; apk_url: string | null; report_url: string | null }>();
   if (!p) return json({ error: "المشروع غير موجود." }, 404);
   return json({
     projectId: p.id, appName: p.app_name, creatorName: p.creator_name, summary: p.summary, provider: p.provider, status: p.status,
-    error: p.error_message, createdAt: p.created_at, releaseUrl: p.release_url, downloadUrl: p.apk_url, reportUrl: p.report_url
+    error: p.error_message, createdAt: p.created_at, downloadUrl: p.apk_url, reportUrl: p.report_url
   });
-}
-async function handleList(request: Request, env: Env): Promise<Response> {
-  const deviceId = new URL(request.url).searchParams.get("device_id");
-  if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const rows = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects WHERE device_id = ? ORDER BY created_at DESC LIMIT 30").bind(deviceId).all();
-  return json({ projects: rows.results || [] });
 }
 async function handleUsage(request: Request, env: Env): Promise<Response> {
   const deviceId = new URL(request.url).searchParams.get("device_id");
@@ -458,9 +452,7 @@ export default {
         if (request.method === "POST" && url.pathname === "/api/generate") {
           return await handleGenerate(request, env);
         }
-        if (request.method === "GET" && url.pathname === "/api/projects") {
-          return await handleList(request, env);
-        }
+
         const projectMatch = url.pathname.match(/^\/api\/projects\/([0-9a-f-]{36})$/i);
         if (request.method === "GET" && projectMatch) {
           return await handleProject(request, env, projectMatch[1]);
