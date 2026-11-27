@@ -79,7 +79,7 @@ jobs:
               f.write("CREATOR_NAME=" + creator.replace("\n", " ").replace("\r", " ")[:80] + "\n")
               f.write("PROJECT_SUMMARY=" + summary.replace("\n", " ").replace("\r", " ")[:320] + "\n")
               slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()[:24] or "student-app"
-              f.write("REPORT_NAME=" + slug + "-" + os.environ.get("PROJECT_ID", "project")[:8] + "-report.pdf\n")
+              f.write("REPORT_NAME=" + slug + "-" + app.get("project_id", "project")[:8] + "-report.pdf\n")
           PY
 
       - name: Build debug APK
