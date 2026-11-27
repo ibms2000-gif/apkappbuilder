@@ -147,7 +147,7 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { authorization: "Bearer " + env.GROQ_API_KEY, "content-type": "application/json" },
-    signal: AbortSignal.timeout(55000),
+    signal: AbortSignal.timeout(80000),
     body: JSON.stringify({
       model: env.GROQ_MODEL || "openai/gpt-oss-20b",
       messages: [
@@ -156,7 +156,8 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
       ],
       temperature: 0.1,
       reasoning_effort: "low",
-      max_completion_tokens: 8192
+      include_reasoning: false,
+      max_completion_tokens: 4096
     })
   });
   const raw = await response.text();
@@ -188,7 +189,7 @@ async function callGemini(env: Env, prompt: string, packageName: string): Promis
       contents: [{ role: "user", parts: [{ text: "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }] }],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
         thinkingConfig: { thinkingLevel: "low" }
       }
     })
