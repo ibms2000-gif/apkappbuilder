@@ -25,6 +25,18 @@ jobs:
           STATUS="$(curl --silent --show-error --output /tmp/home.html --write-out '%{http_code}' "$API_URL/")"
           test "$STATUS" = "200" || (echo "Website returned HTTP $STATUS" && exit 1)
           grep -q "APK App Builder" /tmp/home.html
+          grep -q 'rel="manifest" href="/manifest.webmanifest"' /tmp/home.html
+          grep -q 'apple-mobile-web-app-capable' /tmp/home.html
+          curl --fail --silent --show-error "$API_URL/manifest.webmanifest" -o /tmp/manifest.json
+          node -e 'const m=require("/tmp/manifest.json"); if(m.display!=="standalone" || m.start_url==null || !Array.isArray(m.icons) || m.icons.length<2) process.exit(1); console.log("PWA manifest: OK");'
+          curl --fail --silent --show-error "$API_URL/sw.js" -o /tmp/sw.js
+          grep -q 'skipWaiting' /tmp/sw.js
+          grep -q 'url.pathname.startsWith("/api/")' /tmp/sw.js
+          for asset in icon-192.png icon-512.png apple-touch-icon.png; do
+            curl --fail --silent --show-error "$API_URL/icons/$asset" -o "/tmp/$asset"
+            test -s "/tmp/$asset"
+          done
+          echo "PWA service worker and app icons: OK"
           if grep -Eq "آخر 30 مشروعاً|استعراض جميع مشاريع الطلاب المنشورة|فتح صفحة المشروع العامة|يتم نشر APK" /tmp/home.html; then
             echo "Student page still contains a teacher-only project listing or public release link."
             exit 1
