@@ -122,42 +122,27 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
       model: env.GROQ_MODEL || "openai/gpt-oss-20b",
       messages: [
         { role: "system", content: systemPrompt(packageName) },
-        { role: "user", content: prompt + "\n\nأعد ملفاً واحداً عملياً ومختصراً قدر الإمكان، ولا تضف أي شرح خارج JSON." }
+        { role: "user", content: "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }
       ],
       temperature: 0.1,
       reasoning_effort: "low",
-      max_completion_tokens: 8192,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "android_app_source",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              appName: { type: "string" },
-              packageName: { type: "string" },
-              summary: { type: "string" },
-              mainActivity: { type: "string" }
-            },
-            required: ["appName", "packageName", "summary", "mainActivity"]
-          }
-        }
-      }
+      max_completion_tokens: 8192
     })
   });
   const raw = await response.text();
   let payload: {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
-    error?: { message?: string };
+    error?: { message?: string; failed_generation?: unknown };
   } = {};
   try { payload = JSON.parse(raw) as typeof payload; }
   catch { throw new Error("استجابة Groq غير مفهومة (HTTP " + response.status + ")."); }
-  if (!response.ok) throw new Error("Groq: " + (payload.error?.message || "HTTP " + response.status).slice(0, 240));
+  if (!response.ok) {
+    const failed = typeof payload.error?.failed_generation === "string" ? ": " + payload.error.failed_generation.slice(0, 180) : "";
+    throw new Error("Groq: " + (payload.error?.message || "HTTP " + response.status).slice(0, 180) + failed);
+  }
   const text = payload.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Groq لم يرجع كود التطبيق.");
+  if (!text) throw new Error("Groq لم يرجع كود Kotlin.");
   return { text, inputTokens: payload.usage?.prompt_tokens || 0, outputTokens: payload.usage?.completion_tokens || 0 };
 }
 async function callGemini(env: Env, prompt: string, packageName: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
@@ -169,9 +154,8 @@ async function callGemini(env: Env, prompt: string, packageName: string): Promis
     signal: AbortSignal.timeout(55000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemPrompt(packageName) }] },
-      contents: [{ role: "user", parts: [{ text: prompt + "\n\nأعد JSON فقط. اجعل ملف Kotlin عملياً ومختصراً قدر الإمكان." }] }],
+      contents: [{ role: "user", parts: [{ text: "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }] }],
       generationConfig: {
-        responseMimeType: "application/json",
         temperature: 0.1,
         maxOutputTokens: 8192,
         thinkingConfig: { thinkingLevel: "low" }
@@ -180,23 +164,23 @@ async function callGemini(env: Env, prompt: string, packageName: string): Promis
   });
   const raw = await response.text();
   let payload: {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
     usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
     error?: { message?: string };
   } = {};
   try { payload = JSON.parse(raw) as typeof payload; }
   catch {
-    if (response.status === 524 || response.status === 504) throw new Error("Gemini تأخر في الرد (مهلة اتصال). أعد المحاولة بعد قليل.");
+    if (response.status === 524 || response.status === 504) throw new Error("Gemini تأخر في الرد. أعد المحاولة بعد قليل.");
     throw new Error("أعاد Gemini استجابة غير صالحة (HTTP " + response.status + ").");
   }
   if (!response.ok) {
     const code = response.status;
     if (code === 429) throw new Error("وصل Gemini إلى حد الطلبات المؤقت. انتظر قليلاً ثم أعد المحاولة.");
     if (code === 503 || code === 504 || code === 524) throw new Error("خدمة Gemini مشغولة حالياً أو تأخرت في الرد. أعد المحاولة بعد قليل.");
-    throw new Error("Gemini: " + (payload.error?.message || "HTTP " + code).slice(0, 240));
+    throw new Error("Gemini: " + (payload.error?.message || "HTTP " + code).slice(0, 200));
   }
   const text = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("");
-  if (!text) throw new Error("Gemini لم يرجع كود التطبيق.");
+  if (!text) throw new Error("Gemini لم يرجع كود Kotlin.");
   return { text, inputTokens: payload.usageMetadata?.promptTokenCount || 0, outputTokens: payload.usageMetadata?.candidatesTokenCount || 0 };
 }
 async function generateWithProviders(env: Env, prompt: string, packageName: string): Promise<{ app: GeneratedApp; provider: Provider }> {
@@ -211,7 +195,7 @@ async function generateWithProviders(env: Env, prompt: string, packageName: stri
     try {
       const result = provider === "groq" ? await callGroq(env, prompt, packageName) : await callGemini(env, prompt, packageName);
       await recordTokens(env.DB, provider, result.inputTokens, result.outputTokens);
-      const app = parseModelJson(result.text);
+      const app = parseModelSource(result.text, prompt);
       validateGeneratedApp(app, packageName);
       return { app, provider };
     } catch (error) {
