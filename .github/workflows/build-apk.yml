@@ -78,7 +78,7 @@ jobs:
               f.write("GENERATED_APP_NAME=" + name.replace("\n", " ").replace("\r", " ")[:48] + "\n")
               f.write("CREATOR_NAME=" + creator.replace("\n", " ").replace("\r", " ")[:80] + "\n")
               f.write("PROJECT_SUMMARY=" + summary.replace("\n", " ").replace("\r", " ")[:320] + "\n")
-              slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()[:24] or "student-app"
+              slug = re.sub(r"[^\\w-]+", "-", name, flags=re.UNICODE).strip("-")[:40] or "student-app"
               f.write("REPORT_NAME=" + slug + "-" + app.get("project_id", "project")[:8] + "-report.pdf\n")
           PY
 
@@ -121,7 +121,9 @@ jobs:
             --target "$GITHUB_SHA"
           gh release upload "$RELEASE_TAG" "release-output/$APK_NAME" --repo "$GITHUB_REPOSITORY"
           echo "RELEASE_URL=https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" >> "$GITHUB_ENV"
-          echo "APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME" >> "$GITHUB_ENV"
+          APK_URL="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets[] | select(.name | endswith(".apk")) | .browser_download_url')"
+          test -n "$APK_URL"
+          echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
 
       - name: Generate one-page Arabic student achievement PDF with QR code
         env:
@@ -249,7 +251,9 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" "release-output/$REPORT_NAME" --repo "$GITHUB_REPOSITORY"
-          echo "REPORT_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$REPORT_NAME" >> "$GITHUB_ENV"
+          REPORT_URL="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets[] | select(.name | endswith("-report.pdf")) | .browser_download_url')"
+          test -n "$REPORT_URL"
+          echo "REPORT_URL=$REPORT_URL" >> "$GITHUB_ENV"
 
       - name: Mark project as published in D1
         env:
