@@ -18,8 +18,8 @@ jobs:
     steps:
       - name: Delete public GitHub Release and tag
         env:
-          GH_TOKEN: \${{ github.token }}
-          PROJECT_ID: \${{ inputs.project_id }}
+          GH_TOKEN: ${{ github.token }}
+          PROJECT_ID: ${{ inputs.project_id }}
         run: |
           set -euo pipefail
           if [[ ! "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
@@ -40,9 +40,9 @@ jobs:
 
       - name: Remove project record from the platform
         env:
-          API_URL: \${{ secrets.APKAPPBUILDER_API_URL }}
-          BUILD_TOKEN: \${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
-          PROJECT_ID: \${{ inputs.project_id }}
+          API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
+          BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
+          PROJECT_ID: ${{ inputs.project_id }}
         run: |
           set -euo pipefail
           test -n "$API_URL"
@@ -56,11 +56,11 @@ jobs:
       - name: Report deletion failure to the platform
         if: failure()
         env:
-          API_URL: \${{ secrets.APKAPPBUILDER_API_URL }}
-          BUILD_TOKEN: \${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
-          PROJECT_ID: \${{ inputs.project_id }}
+          API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
+          BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
+          PROJECT_ID: ${{ inputs.project_id }}
         run: |
-          if [ -n "\${API_URL:-}" ] && [ -n "\${BUILD_TOKEN:-}" ]; then
+          if [ -n "${API_URL:-}" ] && [ -n "${BUILD_TOKEN:-}" ]; then
             curl --silent --show-error \
               -X POST "$API_URL/api/build/deletion-failed" \
               -H "Authorization: Bearer $BUILD_TOKEN" \
