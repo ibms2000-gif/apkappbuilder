@@ -108,6 +108,10 @@ async function reserveProvider(db: D1Database, provider: Provider, limit: number
   ).bind(today(), provider, limit).first<{ requests: number }>();
   return result !== null;
 }
+async function releaseProviderReservation(db: D1Database, provider: Provider): Promise<void> {
+  await db.prepare("UPDATE provider_usage SET requests = CASE WHEN requests > 0 THEN requests - 1 ELSE 0 END WHERE usage_day = ? AND provider = ?")
+    .bind(today(), provider).run();
+}
 async function recordTokens(db: D1Database, provider: Provider, inputTokens: number, outputTokens: number): Promise<void> {
   await db.prepare("UPDATE provider_usage SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE usage_day = ? AND provider = ?")
     .bind(Math.max(0, inputTokens), Math.max(0, outputTokens), today(), provider).run();
@@ -138,7 +142,8 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
   try { payload = JSON.parse(raw) as typeof payload; }
   catch { throw new Error("استجابة Groq غير مفهومة (HTTP " + response.status + ")."); }
   if (!response.ok) {
-    const failed = typeof payload.error?.failed_generation === "string" ? ": " + payload.error.failed_generation.slice(0, 180) : "";
+    const detail = payload.error?.failed_generation;
+    const failed = detail ? ": " + (typeof detail === "string" ? detail : JSON.stringify(detail)).slice(0, 180) : "";
     throw new Error("Groq: " + (payload.error?.message || "HTTP " + response.status).slice(0, 180) + failed);
   }
   const text = payload.choices?.[0]?.message?.content;
@@ -194,11 +199,12 @@ async function generateWithProviders(env: Env, prompt: string, packageName: stri
     if (!(await reserveProvider(env.DB, provider, cap))) { failures.push(provider + ": وصلنا إلى السقف اليومي الداخلي"); continue; }
     try {
       const result = provider === "groq" ? await callGroq(env, prompt, packageName) : await callGemini(env, prompt, packageName);
-      await recordTokens(env.DB, provider, result.inputTokens, result.outputTokens);
       const app = parseModelSource(result.text, prompt);
       validateGeneratedApp(app, packageName);
+      await recordTokens(env.DB, provider, result.inputTokens, result.outputTokens);
       return { app, provider };
     } catch (error) {
+      await releaseProviderReservation(env.DB, provider).catch(() => undefined);
       failures.push(provider + ": " + (error instanceof Error ? error.message : "خطأ غير معروف"));
     }
   }
