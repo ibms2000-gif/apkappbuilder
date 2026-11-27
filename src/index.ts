@@ -36,22 +36,23 @@ function makePackageName(id: string): string {
   return "com.apkappbuilder.generated.p" + id.replace(/-/g, "").slice(0, 10);
 }
 function parseModelSource(text: string, prompt: string): GeneratedApp {
-  let source = text.replace(/^\\uFEFF/, '').trim();
+  let source = text.trim();
+  if (source.charCodeAt(0) === 0xFEFF) source = source.slice(1).trim();
   const fence = String.fromCharCode(96).repeat(3);
   if (source.startsWith(fence)) {
-    const lines = source.split(/\\r?\\n/);
+    const lines = source.split(/\r?\n/);
     lines.shift();
     if (lines[lines.length - 1]?.trim() === fence) lines.pop();
-    source = lines.join('\\n').trim();
+    source = lines.join("\n").trim();
   }
-  source = source.replace(/^\\s*```(?:kotlin|kt|java)?\\s*$/gim, '').replace(/^\\s*```\\s*$/gm, '').trim();
-  const lines = source.split(/\\r?\\n/);
-  const firstCodeLine = lines.findIndex(line => /^\\s*(?:import\\s+|package\\s+|class\\s+MainActivity\\b|@file:|@Suppress\\b)/.test(line));
-  if (firstCodeLine >= 0) source = lines.slice(firstCodeLine).join('\\n').trim();
-  if (!source || !/class\\s+MainActivity\\s*:\\s*ComponentActivity\\s*\\(/.test(source)) {
-    throw new Error('لم يرجع النموذج ملف Kotlin كاملاً يحتوي على MainActivity. أعد المحاولة بوصف أبسط.');
+  source = source.replace(/^\s*```(?:kotlin|kt|java)?\s*$/gim, "").replace(/^\s*```\s*$/gm, "").trim();
+  const lines = source.split(/\r?\n/);
+  const firstCodeLine = lines.findIndex(line => /^\s*(?:import\s+|package\s+|class\s+MainActivity\b|@file:|@Suppress\b)/.test(line));
+  if (firstCodeLine >= 0) source = lines.slice(firstCodeLine).join("\n").trim();
+  if (!source || !/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(source)) {
+    throw new Error("لم يرجع النموذج ملف Kotlin كاملاً يحتوي على MainActivity. أعد المحاولة بوصف أبسط.");
   }
-  return { appName: 'تطبيقي الجديد', packageName: '', summary: prompt.trim().replace(/\\s+/g, ' ').slice(0, 480), mainActivity: source };
+  return { appName: "تطبيقي الجديد", packageName: "", summary: prompt.trim().replace(/\s+/g, " ").slice(0, 480), mainActivity: source };
 }
 function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void {
   if (app.mainActivity.length > MAX_SOURCE_LENGTH) throw new Error("الكود الناتج أكبر من الحد المسموح.");
@@ -75,17 +76,18 @@ function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void 
 }
 function systemPrompt(packageName: string): string {
   return [
-    "أنت مهندس Android خبير. اكتب ملف Kotlin كاملاً اسمه MainActivity.kt لتطبيق Android أصلي باستخدام Kotlin وJetpack Compose فقط.",
-    "أعد JSON صالحاً فقط بالمفاتيح: appName, packageName, summary, mainActivity.",
-    "packageName يجب أن يكون حرفياً: " + packageName + " وأول سطر في mainActivity يجب أن يكون: package " + packageName,
-    "يجب أن يحتوي الملف على class MainActivity : ComponentActivity() ويستدعي setContent { }.",
-    "استخدم Material 3 وCompose. أضف imports اللازمة صراحة. صمم واجهة عربية RTL افتراضياً عند ملاءمة الوصف.",
-    "نفّذ وظائف تفاعلية حقيقية محلية باستخدام remember وmutableStateOf وCompose.",
-    "استخدم Android SDK وJetpack Compose وMaterial3 وKotlin القياسي فقط. لا تعتمد على ملفات أو مكتبات خارجية.",
-    "لا تضف صلاحيات أو خدمات أو Activities أخرى. لا تفترض موارد مخصصة. لا تستخدم WebView أو shell أو تحميل كود.",
-    "لا تضع مفاتيح أو أسراراً في التطبيق، ولا ترسل بيانات المستخدم إلى خوادم خارجية. لا تستخدم الإنترنت في النسخة الأولية.",
-    "لا تخرج Markdown أو سياج كود. أخرج JSON فقط مع mainActivity كسلسلة JSON صحيحة الهروب.",
-    "إذا كان المطلوب واسعاً، أنشئ نسخة أولية عملية قابلة للبناء بأفضل الوظائف المحلية الممكنة."
+    "You are a senior Android engineer. Generate exactly one complete Kotlin source file for MainActivity.kt using Android Kotlin and Jetpack Compose.",
+    "OUTPUT FORMAT: raw Kotlin source code only. Do NOT output JSON. Do NOT use Markdown code fences. Do NOT add explanations before or after the code.",
+    "The platform will insert the package declaration itself. Do NOT write a package declaration.",
+    "Start with all required Kotlin import statements, then define: class MainActivity : ComponentActivity().",
+    "The activity must call setContent { } and render a complete, usable Compose application.",
+    "Use Material 3 and Jetpack Compose already available in the project. Use only standard Android SDK and Compose APIs; do not add libraries or external files.",
+    "Implement the requested features with real local UI state using remember and mutableStateOf. Keep the first version focused, reliable and buildable.",
+    "Use Arabic RTL labels when the user's request is Arabic. Add sensible empty states and validation.",
+    "Do not create other activities, services, manifest entries, resources, network calls, WebViews, shell commands, or dynamic code loading.",
+    "Do not include API keys, passwords, tokens, or secrets.",
+    "Keep the source concise enough to fit in one response. Do not omit required imports or closing braces.",
+    "The platform package name (shown only for context): " + packageName
   ].join("\n");
 }
 async function reserveDevice(db: D1Database, deviceId: string, limit: number): Promise<boolean> {
