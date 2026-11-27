@@ -17,9 +17,16 @@ header{border-bottom:1px solid #ffffff18;padding:22px 0}.head{display:flex;align
 main{padding:32px 0 70px}h1{margin:0 0 6px;font-size:26px}.sub{color:#93a3bc;font-size:14px}
 .btn{border:0;border-radius:11px;padding:10px 16px;background:#83e8c4;color:#08231c;font-weight:700;cursor:pointer}
 .btn:disabled{opacity:.55;cursor:wait}.btn.secondary{background:#25364e;color:#e0e9f5;border:1px solid #3a4e69}
-.btn.danger{background:#6b2934;color:#ffe3e6;border:1px solid #9f4352}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:24px 0}
-input,select{background:#111e30;border:1px solid #33445e;color:#eaf0f8;border-radius:11px;padding:11px 13px;min-height:44px}
-#search{flex:1;min-width:220px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 24px}
+.btn.danger{background:#6b2934;color:#ffe3e6;border:1px solid #9f4352}
+input,select{background:#111e30;border:1px solid #33445e;color:#eaf0f8;border-radius:11px;padding:11px 13px;min-height:44px;width:100%}
+input:focus,select:focus{outline:2px solid #5ccaa9;outline-offset:1px}
+.login-card{max-width:440px;margin:54px auto;background:#121f31;border:1px solid #ffffff20;border-radius:18px;padding:24px;box-shadow:0 22px 70px #0005}
+.login-card h2{margin:0 0 8px}.login-card p{color:#94a5bd;font-size:13px;line-height:1.8;margin:0 0 18px}
+.login-card label{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
+.login-card .btn{width:100%;margin-top:12px}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:24px 0}
+#search{flex:1;min-width:220px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 24px}
 .stat{background:#121f31;border:1px solid #ffffff16;border-radius:15px;padding:16px}.stat b{font-size:24px;display:block}.stat span{font-size:12px;color:#96a6bd}
 .list{display:grid;gap:13px}.project{background:#121f31;border:1px solid #ffffff18;border-radius:16px;padding:17px}
 .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.project h3{margin:0 0 4px;font-size:17px}.student{font-size:12px;color:#aebed2}
@@ -30,42 +37,62 @@ input,select{background:#111e30;border:1px solid #33445e;color:#eaf0f8;border-ra
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.actions a{font-size:12px;text-decoration:none;color:#a5e9d4;border:1px solid #316b5a;padding:7px 11px;border-radius:9px}
 .actions a.secondary{color:#c5d4e8;border-color:#455a74}
 .empty{border:1px dashed #3d506b;padding:30px;text-align:center;border-radius:15px;color:#96a6bd}
-.notice{display:none;padding:12px 14px;border-radius:12px;margin:12px 0;font-size:13px}.notice.show{display:block}.notice.ok{background:#153c32;color:#b1f4d8}.notice.error{background:#512b35;color:#ffd0d4}
+.notice{display:none;padding:12px 14px;border-radius:12px;margin:12px 0;font-size:13px;line-height:1.8}.notice.show{display:block}.notice.ok{background:#153c32;color:#b1f4d8}.notice.error{background:#512b35;color:#ffd0d4}
 .foot{color:#73849d;font-size:11px;text-align:center;margin-top:25px}
 @media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr)}.head{align-items:flex-start;flex-direction:column}.top{flex-direction:column}}
 </style>
 </head>
 <body>
-<header><div class="wrap head"><div class="brand">APK App Builder<small>لوحة تحكم المعلم — إدارة مشاريع الطلاب</small></div><button class="btn secondary" id="refresh">تحديث القائمة</button></div></header>
+<header><div class="wrap head"><div class="brand">APK App Builder<small>لوحة تحكم المعلم — إدارة مشاريع الطلاب</small></div><div style="display:flex;gap:8px"><button class="btn secondary" id="refresh" hidden>تحديث القائمة</button><button class="btn secondary" id="logout" hidden>تسجيل الخروج</button></div></div></header>
 <main class="wrap">
 <h1>إدارة مشاريع الطلاب</h1>
-<div class="sub">عرض جميع التطبيقات المرسلة للمنصة، متابعة حالتها، وفتح ملفاتها أو حذفها.</div>
+<div class="sub">لوحة خاصة بالمعلم. أدخل كلمة المرور للمتابعة.</div>
 <div id="notice" class="notice"></div>
-<div class="stats">
- <div class="stat"><b id="total">—</b><span>كل المشاريع</span></div>
- <div class="stat"><b id="ready">—</b><span>تطبيقات جاهزة</span></div>
- <div class="stat"><b id="working">—</b><span>قيد التنفيذ</span></div>
- <div class="stat"><b id="failed">—</b><span>تحتاج مراجعة</span></div>
-</div>
-<div class="toolbar">
- <input id="search" type="search" placeholder="ابحث باسم التطبيق أو الطالب أو وصف المشروع">
- <select id="statusFilter">
-  <option value="">كل الحالات</option><option value="ready">جاهز</option><option value="building">قيد البناء</option><option value="generated">تم التوليد</option><option value="failed">فشل</option><option value="deleting">قيد الحذف</option>
- </select>
-</div>
-<div id="list" class="list"><div class="empty">جارٍ تحميل مشاريع الطلاب…</div></div>
-<div class="foot">هذه الصفحة غير مرتبطة بقائمة الموقع العامة. احتفظ برابطها سرياً ولا تشاركه مع الطلاب.</div>
+<section id="loginPanel" class="login-card">
+ <h2>دخول المعلم</h2>
+ <p>هذه منطقة إدارية محمية. أدخل كلمة المرور التي عيّنتها للوحة التحكم.</p>
+ <form id="loginForm">
+  <label for="password">كلمة المرور</label>
+  <input id="password" type="password" autocomplete="current-password" placeholder="أدخل كلمة مرور لوحة المعلم" required>
+  <button class="btn" id="loginButton" type="submit">دخول إلى لوحة التحكم</button>
+ </form>
+</section>
+<section id="dashboard" hidden>
+ <div class="stats">
+  <div class="stat"><b id="total">—</b><span>كل المشاريع</span></div>
+  <div class="stat"><b id="ready">—</b><span>تطبيقات جاهزة</span></div>
+  <div class="stat"><b id="working">—</b><span>قيد التنفيذ</span></div>
+  <div class="stat"><b id="failed">—</b><span>تحتاج مراجعة</span></div>
+ </div>
+ <div class="toolbar">
+  <input id="search" type="search" placeholder="ابحث باسم التطبيق أو الطالب أو وصف المشروع">
+  <select id="statusFilter" style="width:auto;min-width:155px">
+   <option value="">كل الحالات</option><option value="ready">جاهز</option><option value="building">قيد البناء</option><option value="generated">تم التوليد</option><option value="failed">فشل</option><option value="deleting">قيد الحذف</option>
+  </select>
+ </div>
+ <div id="list" class="list"><div class="empty">جارٍ تحميل مشاريع الطلاب…</div></div>
+ <div class="foot">يمكنك هنا إدارة مشاريع جميع الأجهزة. تأكد من موافقة الطالب والمدرسة قبل نشر بياناته علنًا.</div>
+</section>
 </main>
 <script>
 (function(){
  const $=id=>document.getElementById(id);
- const token=decodeURIComponent(location.pathname.split("/").filter(Boolean).pop()||"");
+ let adminPassword="";
  let projects=[];
  function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
  function msg(text,type){$("notice").textContent=text;$("notice").className="notice show "+(type||"ok");}
  function statusLabel(s){return ({ready:"جاهز للتنزيل",building:"جارٍ بناء APK",generated:"تم التوليد",failed:"فشل",deleting:"جارٍ الحذف",generating:"جارٍ التوليد"})[s]||s||"غير محدد";}
  function ghLink(url,label,secondary){
    try{const u=new URL(url);if(u.protocol!=="https:"||u.hostname!=="github.com")return "";return '<a '+(secondary?'class="secondary" ':'')+'href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>';}catch{return "";}
+ }
+ async function api(path,options){
+   options=options||{};
+   const headers=Object.assign({},options.headers||{});
+   if(adminPassword)headers.Authorization="Bearer "+adminPassword;
+   const res=await fetch(path,Object.assign({cache:"no-store"},options,{headers}));
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(data.error||"تعذر تنفيذ الطلب.");
+   return data;
  }
  function draw(){
    const q=$("search").value.trim().toLowerCase(),filter=$("statusFilter").value;
@@ -95,38 +122,57 @@ input,select{background:#111e30;border:1px solid #33445e;color:#eaf0f8;border-ra
    });
    root.querySelectorAll("[data-delete]").forEach(b=>b.addEventListener("click",()=>removeProject(b.dataset.delete,b)));
  }
- async function api(path,options){
-   const res=await fetch(path,Object.assign({cache:"no-store"},options||{headers:{}}));
-   const data=await res.json().catch(()=>({}));
-   if(!res.ok)throw new Error(data.error||"تعذر تنفيذ الطلب.");
-   return data;
- }
  async function load(){
    $("refresh").disabled=true;
    try{
-     const data=await api("/api/admin/projects",{headers:{Authorization:"Bearer "+token}});
+     const data=await api("/api/admin/projects");
      projects=data.projects||[];draw();
      if(projects.some(p=>p.status==="deleting"))setTimeout(load,5000);
-   }catch(e){msg(e.message+" تأكد من استخدام الرابط السري الصحيح.","error");}
-   finally{$("refresh").disabled=false;}
+   }catch(e){
+     msg(e.message,"error");
+     if(/كلمة مرور|غير مصرح|401/i.test(e.message))logout(false);
+   }finally{$("refresh").disabled=false;}
+ }
+ async function login(event){
+   event.preventDefault();
+   const password=$("password").value;
+   if(password.length<1){msg("أدخل كلمة المرور أولاً.","error");return;}
+   $("loginButton").disabled=true;$("loginButton").textContent="جارٍ التحقق…";
+   try{
+     const res=await fetch("/api/admin/login",{method:"POST",headers:{Authorization:"Bearer "+password},cache:"no-store"});
+     const data=await res.json().catch(()=>({}));
+     if(!res.ok)throw new Error(data.error||"تعذر تسجيل الدخول.");
+     adminPassword=password;
+     $("loginPanel").hidden=true;$("dashboard").hidden=false;
+     $("refresh").hidden=false;$("logout").hidden=false;
+     msg("تم تسجيل الدخول بنجاح.","ok");
+     await load();
+   }catch(e){msg(e.message,"error");}
+   finally{$("loginButton").disabled=false;$("loginButton").textContent="دخول إلى لوحة التحكم";}
+ }
+ function logout(showMessage=true){
+   adminPassword="";projects=[];
+   $("dashboard").hidden=true;$("loginPanel").hidden=false;
+   $("refresh").hidden=true;$("logout").hidden=true;
+   $("password").value="";
+   $("list").innerHTML='<div class="empty">جارٍ تحميل مشاريع الطلاب…</div>';
+   if(showMessage)msg("تم تسجيل الخروج.","ok");
  }
  async function removeProject(id,button){
    const p=projects.find(x=>x.id===id);if(!p)return;
-   if(!confirm("هل أنت متأكد من حذف تطبيق «"+(p.app_name||"") +"»؟\\nسيتم حذف سجل المشروع وملف APK وتقرير PDF وصفحة الإصدار العامة."))return;
+   if(!confirm("هل أنت متأكد من حذف تطبيق «"+(p.app_name||"") +"»؟\nسيتم حذف سجل المشروع وملف APK وتقرير PDF وصفحة الإصدار العامة."))return;
    button.disabled=true;button.textContent="جارٍ إرسال طلب الحذف…";
    try{
-     const d=await api("/api/admin/projects/"+encodeURIComponent(id),{
-       method:"DELETE",headers:{Authorization:"Bearer "+token}
-     });
+     const d=await api("/api/admin/projects/"+encodeURIComponent(id),{method:"DELETE"});
      msg(d.message||"بدأ حذف التطبيق. ستختفي بطاقته بعد اكتمال حذف ملفاته العامة.","ok");
      await load();
    }catch(e){msg(e.message,"error");button.disabled=false;button.textContent="حذف التطبيق وملفاته";}
  }
+ $("loginForm").addEventListener("submit",login);
  $("refresh").addEventListener("click",load);
+ $("logout").addEventListener("click",()=>logout(true));
  $("search").addEventListener("input",draw);
  $("statusFilter").addEventListener("change",draw);
- if(!token){msg("الرابط السري غير مكتمل.","error");}
- else load();
 })();
 </script>
 </body>
