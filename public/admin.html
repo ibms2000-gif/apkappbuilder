@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#101827">
+<title>لوحة تحكم المعلم | APK App Builder</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+:root{font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;color:#eaf0f8;background:#0b1220;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 85% -15%,#253c60 0,transparent 42%),#0b1220}
+button,input,select{font:inherit}.wrap{width:min(1200px,calc(100% - 30px));margin:auto}
+header{border-bottom:1px solid #ffffff18;padding:22px 0}.head{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.brand{font-weight:700;font-size:20px}.brand small{display:block;color:#94a5bd;font-size:12px;font-weight:400}
+main{padding:32px 0 70px}h1{margin:0 0 6px;font-size:26px}.sub{color:#93a3bc;font-size:14px}
+.btn{border:0;border-radius:11px;padding:10px 16px;background:#83e8c4;color:#08231c;font-weight:700;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:wait}.btn.secondary{background:#25364e;color:#e0e9f5;border:1px solid #3a4e69}
+.btn.danger{background:#6b2934;color:#ffe3e6;border:1px solid #9f4352}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:24px 0}
+input,select{background:#111e30;border:1px solid #33445e;color:#eaf0f8;border-radius:11px;padding:11px 13px;min-height:44px}
+#search{flex:1;min-width:220px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 24px}
+.stat{background:#121f31;border:1px solid #ffffff16;border-radius:15px;padding:16px}.stat b{font-size:24px;display:block}.stat span{font-size:12px;color:#96a6bd}
+.list{display:grid;gap:13px}.project{background:#121f31;border:1px solid #ffffff18;border-radius:16px;padding:17px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.project h3{margin:0 0 4px;font-size:17px}.student{font-size:12px;color:#aebed2}
+.badge{font-size:11px;padding:5px 10px;border-radius:30px;background:#2b3b53;color:#c8d6e8;white-space:nowrap}
+.badge.ready{background:#174537;color:#a4f0ce}.badge.failed{background:#532a34;color:#ffc2c8}.badge.building,.badge.generated,.badge.deleting{background:#4a3e24;color:#f5d99a}
+.summary{font-size:13px;color:#c0ccda;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0}
+.meta{font-size:11px;color:#8294ae;display:flex;gap:14px;flex-wrap:wrap}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.actions a{font-size:12px;text-decoration:none;color:#a5e9d4;border:1px solid #316b5a;padding:7px 11px;border-radius:9px}
+.actions a.secondary{color:#c5d4e8;border-color:#455a74}
+.empty{border:1px dashed #3d506b;padding:30px;text-align:center;border-radius:15px;color:#96a6bd}
+.notice{display:none;padding:12px 14px;border-radius:12px;margin:12px 0;font-size:13px}.notice.show{display:block}.notice.ok{background:#153c32;color:#b1f4d8}.notice.error{background:#512b35;color:#ffd0d4}
+.foot{color:#73849d;font-size:11px;text-align:center;margin-top:25px}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr)}.head{align-items:flex-start;flex-direction:column}.top{flex-direction:column}}
+</style>
+</head>
+<body>
+<header><div class="wrap head"><div class="brand">APK App Builder<small>لوحة تحكم المعلم — إدارة مشاريع الطلاب</small></div><button class="btn secondary" id="refresh">تحديث القائمة</button></div></header>
+<main class="wrap">
+<h1>إدارة مشاريع الطلاب</h1>
+<div class="sub">عرض جميع التطبيقات المرسلة للمنصة، متابعة حالتها، وفتح ملفاتها أو حذفها.</div>
+<div id="notice" class="notice"></div>
+<div class="stats">
+ <div class="stat"><b id="total">—</b><span>كل المشاريع</span></div>
+ <div class="stat"><b id="ready">—</b><span>تطبيقات جاهزة</span></div>
+ <div class="stat"><b id="working">—</b><span>قيد التنفيذ</span></div>
+ <div class="stat"><b id="failed">—</b><span>تحتاج مراجعة</span></div>
+</div>
+<div class="toolbar">
+ <input id="search" type="search" placeholder="ابحث باسم التطبيق أو الطالب أو وصف المشروع">
+ <select id="statusFilter">
+  <option value="">كل الحالات</option><option value="ready">جاهز</option><option value="building">قيد البناء</option><option value="generated">تم التوليد</option><option value="failed">فشل</option><option value="deleting">قيد الحذف</option>
+ </select>
+</div>
+<div id="list" class="list"><div class="empty">جارٍ تحميل مشاريع الطلاب…</div></div>
+<div class="foot">هذه الصفحة غير مرتبطة بقائمة الموقع العامة. احتفظ برابطها سرياً ولا تشاركه مع الطلاب.</div>
+</main>
+<script>
+(function(){
+ const $=id=>document.getElementById(id);
+ const token=decodeURIComponent(location.pathname.split("/").filter(Boolean).pop()||"");
+ let projects=[];
+ function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+ function msg(text,type){$("notice").textContent=text;$("notice").className="notice show "+(type||"ok");}
+ function statusLabel(s){return ({ready:"جاهز للتنزيل",building:"جارٍ بناء APK",generated:"تم التوليد",failed:"فشل",deleting:"جارٍ الحذف",generating:"جارٍ التوليد"})[s]||s||"غير محدد";}
+ function ghLink(url,label,secondary){
+   try{const u=new URL(url);if(u.protocol!=="https:"||u.hostname!=="github.com")return "";return '<a '+(secondary?'class="secondary" ':'')+'href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>';}catch{return "";}
+ }
+ function draw(){
+   const q=$("search").value.trim().toLowerCase(),filter=$("statusFilter").value;
+   const rows=projects.filter(p=>{
+     const hay=[p.app_name,p.creator_name,p.prompt,p.summary,p.status].join(" ").toLowerCase();
+     return (!q||hay.includes(q))&&(!filter||p.status===filter);
+   });
+   $("total").textContent=projects.length;
+   $("ready").textContent=projects.filter(p=>p.status==="ready").length;
+   $("working").textContent=projects.filter(p=>["generating","building","deleting"].includes(p.status)).length;
+   $("failed").textContent=projects.filter(p=>p.status==="failed").length;
+   const root=$("list");root.innerHTML="";
+   if(!rows.length){root.innerHTML='<div class="empty">لا توجد مشاريع مطابقة للبحث.</div>';return;}
+   rows.forEach(p=>{
+     const item=document.createElement("article");item.className="project";
+     const actions=[];
+     actions.push(ghLink(p.apk_url,"تنزيل APK",false));
+     actions.push(ghLink(p.report_url,"تقرير PDF",true));
+     actions.push(ghLink(p.release_url,"صفحة الإصدار",true));
+     item.innerHTML=
+      '<div class="top"><div><h3>'+esc(p.app_name||"تطبيق بلا اسم")+'</h3><div class="student">الطالب / المنشئ: '+esc(p.creator_name||"غير مسجل")+'</div></div><span class="badge '+esc(p.status)+'">'+esc(statusLabel(p.status))+'</span></div>'+
+      '<div class="summary">'+esc(p.summary||p.prompt||"لا يوجد وصف محفوظ.")+'</div>'+
+      '<div class="meta"><span>المعرّف: '+esc(p.id)+'</span><span>المزود: '+esc(p.provider||"—")+'</span><span>التاريخ: '+esc((p.created_at||"").slice(0,10))+'</span></div>'+
+      (p.error_message?'<div class="summary" style="color:#ffc2c8">'+esc(p.error_message)+'</div>':"")+
+      '<div class="actions">'+actions.filter(Boolean).join("")+'<button class="btn danger" data-delete="'+esc(p.id)+'" '+(p.status==="deleting"?"disabled":"")+'>'+(p.status==="deleting"?"جارٍ الحذف…":"حذف التطبيق وملفاته")+'</button></div>';
+     root.appendChild(item);
+   });
+   root.querySelectorAll("[data-delete]").forEach(b=>b.addEventListener("click",()=>removeProject(b.dataset.delete,b)));
+ }
+ async function api(path,options){
+   const res=await fetch(path,Object.assign({cache:"no-store"},options||{headers:{}}));
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(data.error||"تعذر تنفيذ الطلب.");
+   return data;
+ }
+ async function load(){
+   $("refresh").disabled=true;
+   try{
+     const data=await api("/api/admin/projects",{headers:{Authorization:"Bearer "+token}});
+     projects=data.projects||[];draw();
+     if(projects.some(p=>p.status==="deleting"))setTimeout(load,5000);
+   }catch(e){msg(e.message+" تأكد من استخدام الرابط السري الصحيح.","error");}
+   finally{$("refresh").disabled=false;}
+ }
+ async function removeProject(id,button){
+   const p=projects.find(x=>x.id===id);if(!p)return;
+   if(!confirm("هل أنت متأكد من حذف تطبيق «"+(p.app_name||"") +"»؟\\nسيتم حذف سجل المشروع وملف APK وتقرير PDF وصفحة الإصدار العامة."))return;
+   button.disabled=true;button.textContent="جارٍ إرسال طلب الحذف…";
+   try{
+     const d=await api("/api/admin/projects/"+encodeURIComponent(id),{
+       method:"DELETE",headers:{Authorization:"Bearer "+token}
+     });
+     msg(d.message||"بدأ حذف التطبيق. ستختفي بطاقته بعد اكتمال حذف ملفاته العامة.","ok");
+     await load();
+   }catch(e){msg(e.message,"error");button.disabled=false;button.textContent="حذف التطبيق وملفاته";}
+ }
+ $("refresh").addEventListener("click",load);
+ $("search").addEventListener("input",draw);
+ $("statusFilter").addEventListener("change",draw);
+ if(!token){msg("الرابط السري غير مكتمل.","error");}
+ else load();
+})();
+</script>
+</body>
+</html>
