@@ -151,8 +151,9 @@ async function recordTokens(db: D1Database, provider: Provider, inputTokens: num
   await db.prepare("UPDATE provider_usage SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE usage_day = ? AND provider = ?")
     .bind(Math.max(0, inputTokens), Math.max(0, outputTokens), today(), provider).run();
 }
-async function callGroq(env: Env, prompt: string, packageName: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+async function callGroq(env: Env, prompt: string, packageName: string, appType: "apk" | "pwa" = "apk"): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   if (!env.GROQ_API_KEY) throw new Error("مفتاح Groq غير مضبوط.");
+  const isPwa = appType === "pwa";
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { authorization: "Bearer " + env.GROQ_API_KEY, "content-type": "application/json" },
@@ -160,8 +161,10 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
     body: JSON.stringify({
       model: env.GROQ_MODEL || "openai/gpt-oss-20b",
       messages: [
-        { role: "system", content: systemPrompt(packageName) },
-        { role: "user", content: "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }
+        { role: "system", content: isPwa ? pwaSystemPrompt() : systemPrompt(packageName) },
+        { role: "user", content: isPwa
+          ? "Create a complete standalone web app for this request:\n" + prompt + "\n\nReturn only one complete HTML document. No Markdown fences or explanations."
+          : "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }
       ],
       temperature: 0.1,
       reasoning_effort: "low",
@@ -183,19 +186,22 @@ async function callGroq(env: Env, prompt: string, packageName: string): Promise<
     throw new Error("Groq: " + (payload.error?.message || "HTTP " + response.status).slice(0, 180) + failed);
   }
   const text = payload.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Groq لم يرجع كود Kotlin.");
+  if (!text) throw new Error(isPwa ? "Groq لم يرجع صفحة HTML للتطبيق." : "Groq لم يرجع كود Kotlin.");
   return { text, inputTokens: payload.usage?.prompt_tokens || 0, outputTokens: payload.usage?.completion_tokens || 0 };
 }
-async function callGemini(env: Env, prompt: string, packageName: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+async function callGemini(env: Env, prompt: string, packageName: string, appType: "apk" | "pwa" = "apk"): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   if (!env.GEMINI_API_KEY) throw new Error("مفتاح Gemini غير مضبوط.");
+  const isPwa = appType === "pwa";
   const model = env.GEMINI_MODEL || "gemini-3.8-flash";
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
     signal: AbortSignal.timeout(55000),
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt(packageName) }] },
-      contents: [{ role: "user", parts: [{ text: "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }] }],
+      systemInstruction: { parts: [{ text: isPwa ? pwaSystemPrompt() : systemPrompt(packageName) }] },
+      contents: [{ role: "user", parts: [{ text: isPwa
+        ? "Create a complete standalone web app for this request:\n" + prompt + "\n\nReturn only one complete HTML document. No Markdown fences or explanations."
+        : "Build this Android app:\n" + prompt + "\n\nReturn only the complete Kotlin source file. No JSON, no Markdown." }] }],
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 4096,
@@ -221,7 +227,7 @@ async function callGemini(env: Env, prompt: string, packageName: string): Promis
     throw new Error("Gemini: " + (payload.error?.message || "HTTP " + code).slice(0, 200));
   }
   const text = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("");
-  if (!text) throw new Error("Gemini لم يرجع كود Kotlin.");
+  if (!text) throw new Error(isPwa ? "Gemini لم يرجع صفحة HTML للتطبيق." : "Gemini لم يرجع كود Kotlin.");
   return { text, inputTokens: payload.usageMetadata?.promptTokenCount || 0, outputTokens: payload.usageMetadata?.candidatesTokenCount || 0 };
 }
 async function generateWithProviders(env: Env, prompt: string, packageName: string): Promise<{ app: GeneratedApp; provider: Provider }> {
@@ -246,6 +252,212 @@ async function generateWithProviders(env: Env, prompt: string, packageName: stri
   }
   throw new Error("تعذر التوليد. " + failures.join(" | "));
 }
+const MAX_PWA_HTML_LENGTH = 60000;
+function pwaSystemPrompt(): string {
+  return [
+    "You are an expert mobile-first web application developer.",
+    "Create one complete, polished, functional HTML5 application from the user's request.",
+    "Return a complete HTML document with doctype, html lang=ar dir=rtl, head, responsive viewport, title, body, CSS and JavaScript.",
+    "All CSS and JavaScript must be inline in the same HTML file. Do not use external libraries, frameworks, images, fonts, CDNs, imports or remote resources.",
+    "Do not use fetch, XMLHttpRequest, WebSocket, EventSource, service workers, cookies, forms that submit, network calls or external navigation.",
+    "The app must work offline after first opening. Persist user-created data with localStorage only.",
+    "Use localStorage as an app-local key/value store. Keep stored values JSON serializable and handle invalid or empty stored data safely.",
+    "Build real working interactions, validation, add/edit/delete flows and useful summaries for the requested task. Do not create decorative mockups or non-working buttons.",
+    "Design for phones first, then desktop. Use Arabic labels for Arabic requests, right-to-left layout, accessible labels, clear empty states and readable contrast.",
+    "Use CSS, emoji and inline SVG for visual elements. Avoid external images.",
+    "Do not include an installation button or service-worker code; the platform adds PWA installation support automatically.",
+    "Never include secrets, tokens, analytics, trackers, third-party scripts, external links or hidden data collection.",
+    "Output only the complete HTML document. No Markdown fences, JSON or explanation."
+  ].join("\n");
+}
+function parsePwaHtml(rawText: string): string {
+  let source = rawText.trim();
+  if (source.charCodeAt(0) === 0xFEFF) source = source.slice(1).trim();
+  if (source.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(source) as Record<string, unknown>;
+      const candidate = parsed.html || parsed.code || parsed.source || parsed.content;
+      if (typeof candidate === "string") source = candidate.trim();
+    } catch { /* Validate the raw response below. */ }
+  }
+  const fence = String.fromCharCode(96).repeat(3);
+  if (source.startsWith(fence)) {
+    const lines = source.split(/\r?\n/);
+    lines.shift();
+    if (lines.length && lines[lines.length - 1].trim() === fence) lines.pop();
+    source = lines.join("\n").trim();
+  }
+  source = source.replace(/^\s*```(?:html|htm)?\s*$/gim, "").replace(/^\s*```\s*$/gm, "").trim();
+  const start = source.search(/<!doctype\s+html|<html\b/i);
+  if (start > 0) source = source.slice(start).trim();
+  if (!/^<!doctype\s+html/i.test(source)) source = "<!doctype html>\n" + source;
+  if (!/<html\b/i.test(source) || !/<head\b/i.test(source) || !/<body\b/i.test(source) || !/<\/html\s*>/i.test(source)) {
+    throw new Error("لم يرجع الذكاء الاصطناعي صفحة HTML كاملة للتطبيق.");
+  }
+  if (!/<script\b/i.test(source)) throw new Error("التطبيق الناتج لا يحتوي على منطق تفاعلي.");
+  if (source.length > MAX_PWA_HTML_LENGTH) throw new Error("حجم صفحة التطبيق الناتجة أكبر من الحد المسموح.");
+  const blocked = [
+    /<script\b[^>]*\bsrc\s*=/i,
+    /<iframe\b|<object\b|<embed\b/i,
+    /<meta\b[^>]*http-equiv\s*=\s*["']?refresh/i,
+    /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/,
+    /\b(?:document|window)\.cookie\b/i,
+    /\b(?:indexedDB|caches)\s*\./,
+    /\b(?:eval|Function)\s*\(/,
+    /@import\s+(?:url\s*\()?["']?https?:/i,
+    /<(?:script|link|img|audio|video)\b[^>]*(?:src|href)\s*=\s*["']https?:/i,
+    /<base\b/i
+  ];
+  if (blocked.some(pattern => pattern.test(source))) {
+    throw new Error("تحتوي صفحة التطبيق على تحميل خارجي أو واجهات غير مسموحة. أعد المحاولة بوصف يعمل محلياً دون اتصال.");
+  }
+  return source;
+}
+async function generatePwaWithProviders(env: Env, prompt: string): Promise<{ html: string; provider: Provider }> {
+  const first = (env.AI_PROVIDER || "auto").toLowerCase() === "gemini" ? "gemini" : "groq";
+  const order: Provider[] = first === "gemini" ? ["gemini", "groq"] : ["groq", "gemini"];
+  const failures: string[] = [];
+  for (const provider of order) {
+    const keyExists = provider === "groq" ? Boolean(env.GROQ_API_KEY) : Boolean(env.GEMINI_API_KEY);
+    if (!keyExists) { failures.push(provider + ": المفتاح غير مضبوط"); continue; }
+    const cap = provider === "groq" ? readLimit(env.GROQ_DAILY_REQUEST_CAP, 40) : readLimit(env.GEMINI_DAILY_REQUEST_CAP, 40);
+    if (!(await reserveProvider(env.DB, provider, cap))) { failures.push(provider + ": وصلنا إلى السقف اليومي الداخلي"); continue; }
+    try {
+      const result = provider === "groq"
+        ? await callGroq(env, prompt, "", "pwa")
+        : await callGemini(env, prompt, "", "pwa");
+      const html = parsePwaHtml(result.text);
+      await recordTokens(env.DB, provider, result.inputTokens, result.outputTokens);
+      return { html, provider };
+    } catch (error) {
+      await releaseProviderReservation(env.DB, provider).catch(() => undefined);
+      failures.push(provider + ": " + (error instanceof Error ? error.message : "خطأ غير معروف"));
+    }
+  }
+  throw new Error("تعذر إنشاء تطبيق الويب. " + failures.join(" | "));
+}
+function extractPwaTitle(html: string): string {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+  return title.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim().slice(0, 48) || "تطبيقي الجديد";
+}
+function preparePwaDocument(source: string, id: string): string {
+  const appBase = "/app/" + id + "/";
+  const title = "تطبيق الويب";
+  const storageGuard = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#10233f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="${appBase}manifest.webmanifest"><style id="apkapp-pwa-install-style">#apkapp-pwa-install{position:fixed;z-index:2147483000;right:12px;left:12px;bottom:calc(12px + env(safe-area-inset-bottom));max-width:520px;margin:auto;padding:10px 12px;border:1px solid #9bb5d2;border-radius:14px;background:#10233fee;color:#fff;font:14px system-ui,sans-serif;box-shadow:0 8px 30px #0004;direction:rtl}#apkapp-pwa-install button{border:0;border-radius:9px;background:#8ce8ca;color:#10233f;font-weight:700;padding:10px 14px;font:inherit;cursor:pointer}#apkapp-pwa-install-help{margin-top:8px;line-height:1.8;font-size:13px}#apkapp-pwa-install-help[hidden]{display:none}#apkapp-pwa-install-help strong{color:#9af0d4}#apkapp-pwa-install-dismiss{float:left;background:#334a67!important;color:#fff!important;padding:6px 10px!important}</style>`;
+  const injectedScript = `<script>(function(){try{var raw=window.localStorage,prefix="apkappbuilder:pwa:${id}:";function keys(){var a=[];for(var i=0;i<raw.length;i++){var k=raw.key(i);if(k&&k.indexOf(prefix)===0)a.push(k.slice(prefix.length));}return a;}var store={get length(){return keys().length;},key:function(i){return keys()[i]||null;},getItem:function(k){return raw.getItem(prefix+String(k));},setItem:function(k,v){raw.setItem(prefix+String(k),String(v));},removeItem:function(k){raw.removeItem(prefix+String(k));},clear:function(){keys().forEach(function(k){raw.removeItem(prefix+k);});}};Object.defineProperty(window,"localStorage",{configurable:false,enumerable:true,value:store});}catch(e){}})();window.addEventListener("load",function(){if("serviceWorker" in navigator)navigator.serviceWorker.register("${appBase}sw.js",{scope:"${appBase}"}).catch(function(){});});document.addEventListener("DOMContentLoaded",function(){var box=document.getElementById("apkapp-pwa-install"),button=document.getElementById("apkapp-pwa-install-button"),help=document.getElementById("apkapp-pwa-install-help"),dismiss=document.getElementById("apkapp-pwa-install-dismiss");if(!box||!button)return;var ios=/iPad|iPhone|iPod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);var standalone=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;if(standalone){box.hidden=true;return;}var pending=null;window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();pending=e;button.textContent="تثبيت التطبيق على الجهاز";});button.addEventListener("click",async function(){if(pending){try{await pending.prompt();var choice=await pending.userChoice;if(choice&&choice.outcome==="accepted")box.hidden=true;pending=null;}catch(e){help.hidden=false;}return;}help.hidden=!help.hidden;if(ios)button.textContent=help.hidden?"إضافة إلى الشاشة الرئيسية":"طريقة الإضافة إلى الشاشة الرئيسية";});dismiss.addEventListener("click",function(){box.hidden=true;});});</script>`;
+  const installWidget = `<aside id="apkapp-pwa-install" aria-label="إضافة التطبيق إلى الشاشة الرئيسية"><button id="apkapp-pwa-install-button" type="button">إضافة إلى الشاشة الرئيسية</button><div id="apkapp-pwa-install-help" hidden><button id="apkapp-pwa-install-dismiss" type="button">إغلاق</button><strong>على iPhone:</strong> افتح الرابط في Safari، واضغط مشاركة، ثم اختر «إضافة إلى الشاشة الرئيسية» واضغط «إضافة».<br><strong>على Android:</strong> افتح الرابط في Chrome ثم اضغط «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</div></aside>`;
+  const headMatch = source.match(/<head\b[^>]*>/i);
+  const bodyMatch = source.match(/<body\b[^>]*>/i);
+  if (!headMatch || !bodyMatch) throw new Error("تعذر تجهيز صفحة PWA.");
+  source = source.replace(headMatch[0], headMatch[0] + storageGuard + injectedScript);
+  source = source.replace(bodyMatch[0], bodyMatch[0] + installWidget);
+  return source;
+}
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+async function pwaProject(env: Env, id: string): Promise<{ id: string; app_name: string; web_source: string; web_url: string | null } | null> {
+  return env.DB.prepare("SELECT id, app_name, web_source, web_url FROM projects WHERE id = ? AND app_type = 'pwa' AND status = 'ready'")
+    .bind(id).first<{ id: string; app_name: string; web_source: string; web_url: string | null }>();
+}
+function pwaHeaders(contentType: string, cacheControl = "no-store"): Headers {
+  const headers = new Headers();
+  headers.set("content-type", contentType);
+  headers.set("cache-control", cacheControl);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  headers.set("content-security-policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'");
+  return headers;
+}
+async function servePwaPage(env: Env, id: string): Promise<Response> {
+  const project = await pwaProject(env, id);
+  if (!project || !project.web_source) return new Response("التطبيق غير موجود أو لم يعد متاحاً.", { status: 404 });
+  return new Response(project.web_source, { headers: pwaHeaders("text/html; charset=utf-8") });
+}
+async function servePwaManifest(env: Env, id: string): Promise<Response> {
+  const project = await pwaProject(env, id);
+  if (!project) return json({ error: "التطبيق غير موجود." }, 404);
+  const base = "/app/" + id + "/";
+  const shortName = Array.from(project.app_name || "تطبيقي").slice(0, 12).join("");
+  const manifest = {
+    id: base,
+    name: project.app_name,
+    short_name: shortName,
+    description: "تطبيق ويب تقدمي تم إنشاؤه عبر منصة APK App Builder.",
+    start_url: base,
+    scope: base,
+    display: "standalone",
+    display_override: ["standalone", "minimal-ui"],
+    orientation: "any",
+    background_color: "#ffffff",
+    theme_color: "#10233f",
+    lang: "ar",
+    dir: "rtl",
+    icons: [
+      { src: base + "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+      { src: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" }
+    ]
+  };
+  const headers = pwaHeaders("application/manifest+json; charset=utf-8", "public, max-age=300");
+  headers.delete("content-security-policy");
+  return new Response(JSON.stringify(manifest), { headers });
+}
+async function servePwaIcon(env: Env, id: string): Promise<Response> {
+  const project = await pwaProject(env, id);
+  if (!project) return new Response("Not Found", { status: 404 });
+  const initial = Array.from(project.app_name || "ت").slice(0, 1).join("");
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#10233f"/><circle cx="256" cy="256" r="190" fill="#1c806f"/><text x="256" y="330" text-anchor="middle" font-size="210" font-family="Arial,sans-serif" font-weight="700" fill="#ffffff">' + xmlEscape(initial) + '</text></svg>';
+  const headers = pwaHeaders("image/svg+xml; charset=utf-8", "public, max-age=3600");
+  headers.delete("content-security-policy");
+  return new Response(svg, { headers });
+}
+function servePwaServiceWorker(id: string): Response {
+  const base = "/app/" + id + "/";
+  const script = `const CACHE_NAME = "apkapp-pwa-${id}-v1";
+const APP_URL = "${base}";
+const SHELL = [APP_URL, APP_URL + "manifest.webmanifest", APP_URL + "icon.svg", "/icons/apple-touch-icon.png"];
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith("apkapp-pwa-${id}-") && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+self.addEventListener("fetch", event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== "GET" || url.origin !== self.location.origin || !url.pathname.startsWith(APP_URL)) return;
+  if (request.mode === "navigate") {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) (await caches.open(CACHE_NAME)).put(APP_URL, response.clone());
+        return response;
+      } catch {
+        return (await caches.match(APP_URL)) || new Response("افتح التطبيق مرة أخرى عند توفر الإنترنت لأول مرة.", { status: 503 });
+      }
+    })());
+    return;
+  }
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok) (await caches.open(CACHE_NAME)).put(request, response.clone());
+    return response;
+  })());
+});
+`;
+  const headers = pwaHeaders("application/javascript; charset=utf-8", "no-cache");
+  headers.set("service-worker-allowed", base);
+  headers.delete("content-security-policy");
+  return new Response(script, { headers });
+}
+
 async function dispatchBuild(env: Env, projectId: string): Promise<void> {
   if (!env.GH_TOKEN) throw new Error("لم يتم إعداد GH_TOKEN في أسرار Worker.");
   const repo = env.GITHUB_REPOSITORY || "ibms2000-gif/apkappbuilder";
@@ -261,12 +473,14 @@ async function dispatchBuild(env: Env, projectId: string): Promise<void> {
 }
 async function handleGenerate(request: Request, env: Env): Promise<Response> {
   if (!env.DB) return json({ error: "قاعدة بيانات D1 غير مربوطة." }, 503);
-  let body: { prompt?: unknown; deviceId?: unknown; appName?: unknown; creatorName?: unknown };
+  let body: { prompt?: unknown; deviceId?: unknown; appName?: unknown; creatorName?: unknown; appType?: unknown };
   try { body = await request.json() as typeof body; } catch { return json({ error: "بيانات الطلب غير صالحة." }, 400); }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length < 12 || prompt.length > 5000) return json({ error: "اكتب وصفاً من 12 إلى 5000 حرف." }, 400);
   const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().replace(/[<>\r\n]/g, "").slice(0, 80) : "";
   if (creatorName.length < 2) return json({ error: "أدخل اسم الطالب أو منشئ التطبيق (حرفان على الأقل)." }, 400);
+  const appType = body.appType === undefined ? "apk" : body.appType;
+  if (appType !== "apk" && appType !== "pwa") return json({ error: "اختر نوع التطبيق: APK أو PWA." }, 400);
   if (!validDeviceId(body.deviceId)) return json({ error: "معرّف الجهاز غير صالح." }, 400);
   const deviceId = body.deviceId;
   const limit = readLimit(env.DEVICE_DAILY_LIMIT, 2);
@@ -274,9 +488,25 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   const packageName = makePackageName(id);
   try {
+    const requestedName = typeof body.appName === "string" && body.appName.trim()
+      ? body.appName.trim().replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 48) : "";
+    if (appType === "pwa") {
+      const result = await generatePwaWithProviders(env, prompt);
+      const appName = requestedName || extractPwaTitle(result.html);
+      const webUrl = "/app/" + id + "/";
+      const webSource = preparePwaDocument(result.html, id);
+      const summary = prompt.replace(/\s+/g, " ").slice(0, 480);
+      await env.DB.prepare(
+        "INSERT INTO projects (id, device_id, prompt, app_name, creator_name, package_name, main_activity, summary, provider, status, app_type, web_source, web_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', 'pwa', ?, ?)"
+      ).bind(id, deviceId, prompt, appName, creatorName, packageName, "// PWA document is stored in web_source", summary, result.provider, webSource, webUrl).run();
+      return json({
+        projectId: id, appName, summary, provider: result.provider, status: "ready",
+        appType: "pwa", webUrl, message: "تم إنشاء تطبيق الويب التقدمي. افتح الرابط ثم أضفه إلى الشاشة الرئيسية."
+      }, 201);
+    }
+
     const result = await generateWithProviders(env, prompt, packageName);
-    const appName = typeof body.appName === "string" && body.appName.trim()
-      ? body.appName.trim().replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 48) : result.app.appName;
+    const appName = requestedName || result.app.appName;
     await env.DB.prepare(
       "INSERT INTO projects (id, device_id, prompt, app_name, creator_name, package_name, main_activity, summary, provider, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'generated')"
     ).bind(id, deviceId, prompt, appName, creatorName, packageName, result.app.mainActivity, result.app.summary, result.provider).run();
@@ -294,7 +524,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
           .bind(message, new Date().toISOString(), id).run();
       }
     }
-    return json({ projectId: id, appName, summary: result.app.summary, provider: result.provider, status: buildStarted ? "building" : "generated", message }, 201);
+    return json({ projectId: id, appName, summary: result.app.summary, provider: result.provider, status: buildStarted ? "building" : "generated", appType: "apk", message }, 201);
   } catch (error) {
     await releaseDeviceReservation(env.DB, deviceId).catch(() => undefined);
     const message = error instanceof Error ? error.message : "حدث خطأ أثناء التوليد.";
@@ -304,11 +534,12 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
 async function handleProject(request: Request, env: Env, id: string): Promise<Response> {
   const deviceId = new URL(request.url).searchParams.get("device_id");
   if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const p = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, apk_url, report_url FROM projects WHERE id = ? AND device_id = ?")
-    .bind(id, deviceId).first<{ id: string; app_name: string; creator_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string; apk_url: string | null; report_url: string | null }>();
+  const p = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, apk_url, report_url, app_type, web_url FROM projects WHERE id = ? AND device_id = ?")
+    .bind(id, deviceId).first<{ id: string; app_name: string; creator_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string; apk_url: string | null; report_url: string | null; app_type: string | null; web_url: string | null }>();
   if (!p) return json({ error: "المشروع غير موجود." }, 404);
   return json({
-    projectId: p.id, appName: p.app_name, creatorName: p.creator_name, summary: p.summary, provider: p.provider, status: p.status,
+    projectId: p.id, appName: p.app_name, creatorName: p.creator_name, summary: p.summary, provider: p.provider,
+    status: p.status, appType: p.app_type || "apk", webUrl: p.web_url,
     error: p.error_message, createdAt: p.created_at, downloadUrl: p.apk_url, reportUrl: p.report_url
   });
 }
@@ -399,16 +630,20 @@ async function dispatchDeleteRelease(env: Env, projectId: string): Promise<void>
 async function adminListProjects(request: Request, env: Env): Promise<Response> {
   if (!(await isAdminAuthorized(request, env))) return json({ error: "رمز لوحة المعلم غير صحيح." }, 401);
   const rows = await env.DB.prepare(
-    "SELECT id, app_name, creator_name, prompt, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects ORDER BY created_at DESC LIMIT 500"
+    "SELECT id, app_name, creator_name, prompt, summary, provider, status, error_message, created_at, release_url, apk_url, report_url, app_type, web_url FROM projects ORDER BY created_at DESC LIMIT 500"
   ).all();
   return json({ projects: rows.results || [] });
 }
 async function adminDeleteProject(request: Request, env: Env, id: string): Promise<Response> {
   if (!(await isAdminAuthorized(request, env))) return json({ error: "رمز لوحة المعلم غير صحيح." }, 401);
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "معرّف المشروع غير صالح." }, 400);
-  const p = await env.DB.prepare("SELECT id, status FROM projects WHERE id = ?")
-    .bind(id).first<{ id: string; status: string }>();
+  const p = await env.DB.prepare("SELECT id, status, app_type FROM projects WHERE id = ?")
+    .bind(id).first<{ id: string; status: string; app_type: string | null }>();
   if (!p) return json({ error: "المشروع غير موجود أو سبق حذفه." }, 404);
+  if (p.app_type === "pwa") {
+    await env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
+    return json({ ok: true, status: "deleted", message: "تم حذف تطبيق الويب ورابطه." });
+  }
   if (p.status === "deleting") return json({ ok: true, status: "deleting", message: "الحذف جارٍ بالفعل." }, 202);
   await env.DB.prepare("UPDATE projects SET status = 'deleting', error_message = NULL, updated_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), id).run();
@@ -440,6 +675,14 @@ async function buildDeletionFailure(request: Request, env: Env): Promise<Respons
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const pwaServiceWorkerMatch = url.pathname.match(/^\/app\/([0-9a-f-]{36})\/sw\.js$/i);
+    const pwaManifestMatch = url.pathname.match(/^\/app\/([0-9a-f-]{36})\/manifest\.webmanifest$/i);
+    const pwaIconMatch = url.pathname.match(/^\/app\/([0-9a-f-]{36})\/icon\.svg$/i);
+    const pwaPageMatch = url.pathname.match(/^\/app\/([0-9a-f-]{36})\/?$/i);
+    if (request.method === "GET" && pwaServiceWorkerMatch) return servePwaServiceWorker(pwaServiceWorkerMatch[1]);
+    if (request.method === "GET" && pwaManifestMatch) return servePwaManifest(env, pwaManifestMatch[1]);
+    if (request.method === "GET" && pwaIconMatch) return servePwaIcon(env, pwaIconMatch[1]);
+    if (request.method === "GET" && pwaPageMatch) return servePwaPage(env, pwaPageMatch[1]);
     if (env.ADMIN_TOKEN && url.pathname === "/control/" + env.ADMIN_TOKEN && request.method === "GET") {
       const page = await env.ASSETS.fetch(new Request(new URL("/admin.html", url.origin), request));
       const headers = new Headers(page.headers);

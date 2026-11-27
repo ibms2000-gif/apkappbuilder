@@ -1,0 +1,3 @@
+ALTER TABLE projects ADD COLUMN app_type TEXT NOT NULL DEFAULT 'apk';
+ALTER TABLE projects ADD COLUMN web_source TEXT;
+ALTER TABLE projects ADD COLUMN web_url TEXT;

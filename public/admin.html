@@ -81,9 +81,13 @@ input:focus,select:focus{outline:2px solid #5ccaa9;outline-offset:1px}
  let projects=[];
  function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
  function msg(text,type){$("notice").textContent=text;$("notice").className="notice show "+(type||"ok");}
- function statusLabel(s){return ({ready:"جاهز للتنزيل",building:"جارٍ بناء APK",generated:"تم التوليد",failed:"فشل",deleting:"جارٍ الحذف",generating:"جارٍ التوليد"})[s]||s||"غير محدد";}
+ function statusLabel(s){return ({ready:"جاهز للاستخدام",building:"جارٍ بناء APK",generated:"تم التوليد",failed:"فشل",deleting:"جارٍ الحذف",generating:"جارٍ التوليد"})[s]||s||"غير محدد";}
  function ghLink(url,label,secondary){
    try{const u=new URL(url);if(u.protocol!=="https:"||u.hostname!=="github.com")return "";return '<a '+(secondary?'class="secondary" ':'')+'href="'+esc(u.href)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>';}catch{return "";}
+ }
+ function pwaLink(path){
+   if(typeof path!=="string"||!/^\/app\/[a-f0-9-]{36}\/?$/i.test(path))return "";
+   return '<a href="'+esc(new URL(path,location.origin).href)+'" target="_blank" rel="noopener noreferrer">فتح تطبيق PWA</a>';
  }
  async function api(path,options){
    options=options||{};
@@ -109,13 +113,16 @@ input:focus,select:focus{outline:2px solid #5ccaa9;outline-offset:1px}
    rows.forEach(p=>{
      const item=document.createElement("article");item.className="project";
      const actions=[];
-     actions.push(ghLink(p.apk_url,"تنزيل APK",false));
-     actions.push(ghLink(p.report_url,"تقرير PDF",true));
-     actions.push(ghLink(p.release_url,"صفحة الإصدار",true));
+     if(p.app_type==="pwa")actions.push(pwaLink(p.web_url));
+     else{
+       actions.push(ghLink(p.apk_url,"تنزيل APK",false));
+       actions.push(ghLink(p.report_url,"تقرير PDF",true));
+       actions.push(ghLink(p.release_url,"صفحة الإصدار",true));
+     }
      item.innerHTML=
       '<div class="top"><div><h3>'+esc(p.app_name||"تطبيق بلا اسم")+'</h3><div class="student">الطالب / المنشئ: '+esc(p.creator_name||"غير مسجل")+'</div></div><span class="badge '+esc(p.status)+'">'+esc(statusLabel(p.status))+'</span></div>'+
       '<div class="summary">'+esc(p.summary||p.prompt||"لا يوجد وصف محفوظ.")+'</div>'+
-      '<div class="meta"><span>المعرّف: '+esc(p.id)+'</span><span>المزود: '+esc(p.provider||"—")+'</span><span>التاريخ: '+esc((p.created_at||"").slice(0,10))+'</span></div>'+
+      '<div class="meta"><span>النوع: '+(p.app_type==="pwa"?"PWA":"Android APK")+'</span><span>المعرّف: '+esc(p.id)+'</span><span>المزود: '+esc(p.provider||"—")+'</span><span>التاريخ: '+esc((p.created_at||"").slice(0,10))+'</span></div>'+
       (p.error_message?'<div class="summary" style="color:#ffc2c8">'+esc(p.error_message)+'</div>':"")+
       '<div class="actions">'+actions.filter(Boolean).join("")+'<button class="btn danger" data-delete="'+esc(p.id)+'" '+(p.status==="deleting"?"disabled":"")+'>'+(p.status==="deleting"?"جارٍ الحذف…":"حذف التطبيق وملفاته")+'</button></div>';
      root.appendChild(item);
@@ -160,7 +167,7 @@ input:focus,select:focus{outline:2px solid #5ccaa9;outline-offset:1px}
  }
  async function removeProject(id,button){
    const p=projects.find(x=>x.id===id);if(!p)return;
-   if(!confirm("هل أنت متأكد من حذف تطبيق «"+(p.app_name||"") +"»؟\nسيتم حذف سجل المشروع وملف APK وتقرير PDF وصفحة الإصدار العامة."))return;
+   if(!confirm(p.app_type==="pwa"?"هل تريد حذف تطبيق الويب «"+(p.app_name||"")+"» وتعطيل رابطه؟":"هل أنت متأكد من حذف تطبيق «"+(p.app_name||"") +"»؟\nسيتم حذف سجل المشروع وملف APK وتقرير PDF وصفحة الإصدار العامة."))return;
    button.disabled=true;button.textContent="جارٍ إرسال طلب الحذف…";
    try{
      const d=await api("/api/admin/projects/"+encodeURIComponent(id),{method:"DELETE"});

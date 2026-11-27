@@ -27,6 +27,12 @@ jobs:
           grep -q "APK App Builder" /tmp/home.html
           grep -q 'rel="manifest" href="/manifest.webmanifest"' /tmp/home.html
           grep -q 'apple-mobile-web-app-capable' /tmp/home.html
+          grep -q 'id="appType"' /tmp/home.html
+          grep -q 'value="pwa"' /tmp/home.html
+          echo "Student output selector: APK and PWA options present."
+          PWA_MISSING="$(curl --silent --output /tmp/pwa-missing.txt --write-out '%{http_code}' "$API_URL/app/00000000-0000-4000-8000-000000000000/")"
+          test "$PWA_MISSING" = "404" || (echo "Unknown PWA app route returned HTTP $PWA_MISSING instead of 404" && exit 1)
+          echo "Dynamic PWA route: OK (unknown app safely returns 404)"
           curl --fail --silent --show-error "$API_URL/manifest.webmanifest" -o /tmp/manifest.json
           node -e 'const m=require("/tmp/manifest.json"); if(m.display!=="standalone" || m.start_url==null || !Array.isArray(m.icons) || m.icons.length<2) process.exit(1); console.log("PWA manifest: OK");'
           curl --fail --silent --show-error "$API_URL/sw.js" -o /tmp/sw.js

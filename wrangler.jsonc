@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-27",
   "compatibility_flags": ["nodejs_compat"],
-  "assets": {"directory":"./public","binding":"ASSETS","run_worker_first":["/api/*","/control/*","/admin.html"]},
+  "assets": {"directory":"./public","binding":"ASSETS","run_worker_first":["/api/*","/control/*","/admin.html","/app/*"]},
   "observability": {"enabled":true,"traces":{"enabled":true}},
   "vars": {
     "GITHUB_REPOSITORY":"ibms2000-gif/apkappbuilder","GITHUB_REF":"main",
