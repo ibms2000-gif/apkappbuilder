@@ -52,9 +52,9 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
 <div class="usage"><span>حصتك التجريبية اليوم</span><strong id="quota">جارٍ التحميل…</strong></div>
 </div>
 </section>
-<section><div class="section-head"><h2>مشاريعي</h2><span class="muted">آخر 30 مشروعاً على هذا الجهاز</span></div><div class="projects" id="projects"><div class="empty">لا توجد مشاريع بعد. ابدأ بوصف تطبيقك الأول.</div></div></section>
+<section><div class="section-head"><div><h2>مشاريعي</h2><span class="muted">آخر 30 مشروعاً على هذا الجهاز</span></div><a class="btn-link secondary" href="https://github.com/ibms2000-gif/apkappbuilder/releases" target="_blank" rel="noopener">استعراض جميع مشاريع الطلاب المنشورة</a></div><div class="projects" id="projects"><div class="empty">لا توجد مشاريع بعد. ابدأ بوصف تطبيقك الأول.</div></div></section>
 </main>
-<footer><div class="wrap">نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.<br>يتم توليد الكود ثم بناؤه عبر GitHub Actions. راجع التطبيق واختبره قبل استخدامه أو نشره.</div></footer>
+<footer><div class="wrap">نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.<br>يتم نشر APK وتقرير الإنجاز علناً في GitHub Releases. لا تستخدم بيانات طالب دون موافقته وموافقة المدرسة.</div></footer>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
@@ -124,10 +124,6 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
       await refreshProjects();await usage();if(d.status==="building")pollProject(d.projectId);
     }catch(e){notice(e.message,"error");await usage();}
     finally{button.disabled=false;button.textContent="✦ أنشئ التطبيق";}
-  });
-  $("projects").addEventListener("click",function(event){
-    const btn=event.target.closest("[data-download]");if(!btn)return;
-    location.href="/api/download/"+btn.getAttribute("data-download")+"?device_id="+encodeURIComponent(deviceId);
   });
   refreshProjects().catch(e=>notice(e.message,"error"));usage();
 })();
