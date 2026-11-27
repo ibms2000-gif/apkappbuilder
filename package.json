@@ -1,1 +1,18 @@
-{"name":"apkappbuilder","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"wrangler dev","deploy":"wrangler deploy","typecheck":"tsc --noEmit","db:local":"wrangler d1 migrations apply apkappbuilder-db --local","db:remote":"wrangler d1 migrations apply apkappbuilder-db --remote"},"devDependencies":{"@cloudflare/workers-types":"^4.20261120.0","typescript":"^5.8.3","wrangler":"^4.45.0"}}
+{
+  "name": "apkappbuilder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:local": "wrangler d1 migrations apply apkappbuilder-db --local",
+    "db:remote": "wrangler d1 migrations apply apkappbuilder-db --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261125.1",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.45.0"
+  }
+}
