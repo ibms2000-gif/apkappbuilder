@@ -27,7 +27,7 @@ h2{font-size:20px;margin:0}.muted{color:#8696b1;font-size:13px}.usage{border:1px
 .project{border:1px solid #ffffff16;background:#111c2d;border-radius:16px;padding:16px}.project-top{display:flex;justify-content:space-between;gap:10px;align-items:start}
 .project h3{font-size:16px;margin:0 0 6px}.status{font-size:11px;padding:5px 9px;border-radius:99px;background:#26344b;color:#b4c5de;white-space:nowrap}
 .status.ready{background:#123a30;color:#8be8c4}.status.failed{background:#44252d;color:#ffb0b7}.status.building{background:#41351c;color:#f4d18a}
-.project p{font-size:13px;color:#98a8c0;line-height:1.7;min-height:44px}.project .btn{min-height:39px;padding:8px 14px;font-size:13px;width:100%}
+.project p{font-size:13px;color:#98a8c0;line-height:1.7;min-height:44px}.project .btn{min-height:39px;padding:8px 14px;font-size:13px;width:100%}.project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.btn-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:11px;background:linear-gradient(135deg,#82edc7,#43b7a9);color:#08221e;font-weight:700;padding:9px 10px;font-size:12px}.btn-link.secondary{background:#26364e;color:#dce7f8;border:1px solid #40516b}.student{font-size:12px;color:#b7c7dc;margin-top:5px}
 .empty{border:1px dashed #384861;border-radius:16px;padding:30px;text-align:center;color:#8090aa;grid-column:1/-1}
 .notice{display:none;padding:13px 15px;border-radius:12px;margin-top:14px;font-size:13px;line-height:1.7}
 .notice.show{display:block}.notice.error{background:#47242c;color:#ffc0c5}.notice.ok{background:#14392f;color:#a1ecd0}
@@ -43,7 +43,8 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
 <h1>اكتب فكرتك. <span>وابنِ تطبيقك.</span></h1>
 <p class="lead">صف التطبيق الذي تتخيله باللغة العربية أو الإنجليزية، وسيحوّله الذكاء الاصطناعي إلى مشروع Android قابل للبناء، ثم تحصل على ملف APK لتجربته على هاتفك.</p>
 <div class="panel">
-<label for="appName">اسم التطبيق (اختياري)</label><input id="appName" maxlength="48" placeholder="مثال: مصروفي الذكي">
+<label for="creatorName">اسم الطالب / منشئ التطبيق</label><input id="creatorName" maxlength="80" placeholder="اكتب اسم صاحب مشروع الإنجاز">
+<label for="appName" style="margin-top:16px">اسم التطبيق (اختياري)</label><input id="appName" maxlength="48" placeholder="مثال: مصروفي الذكي">
 <label for="prompt" style="margin-top:18px">ماذا تريد أن يفعل تطبيقك؟</label>
 <textarea id="prompt" maxlength="5000" placeholder="أنشئ تطبيقاً لإدارة المصروفات اليومية. أريد إضافة المصروف مع التصنيف والتاريخ، وعرض مجموع المصروفات لهذا الشهر، ورسماً يوضح المصروفات حسب التصنيف، مع حفظ البيانات داخل الهاتف..."></textarea>
 <div class="row"><div class="hint">كلما كان الوصف أوضح كانت النتيجة أفضل. الحد الأقصى 5000 حرف.</div><button class="btn" id="generate">✦ أنشئ التطبيق</button></div>
@@ -81,10 +82,10 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
     const status=p.status||"generated",id=p.id||p.projectId;
     const el=document.createElement("article");el.className="project";
     let action="";
-    if(status==="ready")action='<button class="btn" data-download="'+esc(id)+'">تنزيل ملف APK</button>';
+    if(status==="ready")action='<div class="project-actions"><a class="btn-link" href="'+esc(p.apk_url)+'" target="_blank" rel="noopener">تنزيل APK</a><a class="btn-link secondary" href="'+esc(p.report_url)+'" target="_blank" rel="noopener">تقرير PDF</a></div><div class="hint" style="margin-top:8px"><a href="'+esc(p.release_url)+'" target="_blank" rel="noopener" style="color:#8bdcc6">فتح صفحة المشروع العامة</a></div>';
     if(status==="failed")action='<div class="hint">'+esc(p.error_message||p.error||"راجع سجل البناء في GitHub Actions.")+'</div>';
-    if(status==="generated")action='<div class="hint">تم حفظ كود التطبيق. يلزم إكمال إعدادات البناء لإنشاء APK.</div>';
-    el.innerHTML='<div class="project-top"><div><h3>'+esc(p.app_name||p.appName)+'</h3><span class="muted">'+esc(p.provider||"")+'</span></div><span class="status '+esc(status)+'">'+esc(label(status))+'</span></div><p>'+esc(p.summary||p.error_message||p.error||"تطبيق Android مولّد من وصفك.")+'</p>'+action;
+    if(status==="generated")action='<div class="hint">تم حفظ كود التطبيق. في انتظار إعداد البناء.</div>';
+    el.innerHTML='<div class="project-top"><div><h3>'+esc(p.app_name||p.appName)+'</h3><span class="muted">'+esc(p.provider||"")+'</span><div class="student">منشئ المشروع: '+esc(p.creator_name||p.creatorName||"")+'</div></div><span class="status '+esc(status)+'">'+esc(label(status))+'</span></div><p>'+esc(p.summary||p.error_message||p.error||"تطبيق Android مولّد من وصفك.")+'</p>'+action;
     return el;
   }
   async function refreshProjects(){
@@ -101,7 +102,7 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
         const p=await api("/api/projects/"+id+"?device_id="+encodeURIComponent(deviceId));
         if(p.status!=="building"){
           await refreshProjects();
-          if(p.status==="ready")notice("اكتمل البناء. أصبح ملف APK جاهزاً للتنزيل.","ok");
+          if(p.status==="ready")notice("اكتمل بناء التطبيق ونشر APK وتقرير PDF للعامة.","ok");
           if(p.status==="failed")notice(p.error||"فشل البناء. راجع سجل GitHub Actions.","error");
           return;
         }
@@ -112,11 +113,13 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
   }
   $("generate").addEventListener("click",async function(){
     const prompt=$("prompt").value.trim();
+    const creatorName=$("creatorName").value.trim();
+    if(creatorName.length<2){notice("أدخل اسم الطالب أو منشئ التطبيق أولاً.","error");return;}
     if(prompt.length<12){notice("اكتب وصفاً أوضح للتطبيق (12 حرفاً على الأقل).","error");return;}
     const button=$("generate");button.disabled=true;button.textContent="جارٍ توليد التطبيق…";
     notice("يحلّل الذكاء الاصطناعي فكرتك ويكتب كود Android. قد تستغرق العملية بعض الوقت.","ok");
     try{
-      const d=await api("/api/generate",{method:"POST",body:JSON.stringify({prompt:prompt,appName:$("appName").value.trim(),deviceId:deviceId})});
+      const d=await api("/api/generate",{method:"POST",body:JSON.stringify({prompt:prompt,appName:$("appName").value.trim(),creatorName:creatorName,deviceId:deviceId})});
       notice(d.message||"تم إنشاء المشروع.","ok");$("prompt").value="";
       await refreshProjects();await usage();if(d.status==="building")pollProject(d.projectId);
     }catch(e){notice(e.message,"error");await usage();}
