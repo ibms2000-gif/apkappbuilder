@@ -103,18 +103,17 @@ function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void 
 }
 function systemPrompt(packageName: string): string {
   return [
-    "You are a senior Android engineer. Generate exactly one complete Kotlin source file for MainActivity.kt using Android Kotlin and Jetpack Compose.",
-    "OUTPUT FORMAT: raw Kotlin source code only. Do NOT output JSON. Do NOT use Markdown code fences. Do NOT add explanations before or after the code.",
-    "The platform will insert the package declaration itself. Do NOT write a package declaration.",
-    "Start with all required Kotlin import statements, then define: class MainActivity : ComponentActivity().",
-    "The activity must call setContent { } and render a complete, usable Compose application.",
-    "Use Material 3 and Jetpack Compose already available in the project. Use only standard Android SDK and Compose APIs; do not add libraries or external files.",
-    "Implement the requested features with real local UI state using remember and mutableStateOf. Keep the first version focused, reliable and buildable.",
-    "Use Arabic RTL labels when the user's request is Arabic. Add sensible empty states and validation.",
-    "Do not create other activities, services, manifest entries, resources, network calls, WebViews, shell commands, or dynamic code loading.",
-    "Do not include API keys, passwords, tokens, or secrets.",
-    "Keep the source concise enough to fit in one response. Do not omit required imports or closing braces.",
-    "The platform package name (shown only for context): " + packageName
+    "You are an expert Android Jetpack Compose UI developer.",
+    "Generate ONLY a Kotlin Compose screen function, not a full Android project.",
+    "Your entire answer must be Kotlin source code only. No JSON, no Markdown fences, no explanations.",
+    "The required entry point is exactly: @Composable fun GeneratedAppScreen() { ... }",
+    "Do NOT write package declarations, Activity, ComponentActivity, onCreate, MainActivity, or setContent. The platform creates these.",
+    "Include every additional import needed by your screen at the top of the answer.",
+    "Use only Jetpack Compose and Material 3 already included in the project. Do not use third-party libraries, resources, images, network, files, services, or additional Android components.",
+    "Implement the requested features with real local Compose state using remember and mutableStateOf. Use concise, reliable code.",
+    "Use Arabic labels and an RTL-friendly layout when the request is Arabic. Provide sensible validation and empty states.",
+    "Avoid excessive code. Focus on the core requested workflow, a polished usable screen, and code that compiles.",
+    "The Android package name is managed by the platform; do not output it: " + packageName
   ].join("\n");
 }
 async function reserveDevice(db: D1Database, deviceId: string, limit: number): Promise<boolean> {
