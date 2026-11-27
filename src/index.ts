@@ -38,82 +38,89 @@ function makePackageName(id: string): string {
 function parseModelSource(text: string, prompt: string): GeneratedApp {
   let source = text.trim();
   if (source.charCodeAt(0) === 0xFEFF) source = source.slice(1).trim();
+  // Some models wrap source in a small JSON object despite being asked for raw Kotlin.
+  if (source.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(source) as Record<string, unknown>;
+      const candidate = parsed.code || parsed.kotlin || parsed.source || parsed.mainActivity || parsed.content;
+      if (typeof candidate === "string") source = candidate.trim();
+    } catch { /* Keep the original text and inspect it as source below. */ }
+  }
   const fence = String.fromCharCode(96).repeat(3);
   if (source.startsWith(fence)) {
     const lines = source.split(/\r?\n/);
     lines.shift();
-    if (lines[lines.length - 1] && lines[lines.length - 1].trim() === fence) lines.pop();
+    if (lines.length && lines[lines.length - 1].trim() === fence) lines.pop();
     source = lines.join("\n").trim();
   }
   source = source.replace(/^\s*```(?:kotlin|kt|java)?\s*$/gim, "").replace(/^\s*```\s*$/gm, "").trim();
+  // Remove a short natural-language preamble before the first Kotlin declaration.
+  const sourceStart = source.search(/(?:^|\n)\s*(?:package\s+|import\s+|@(?:androidx\.compose\.runtime\.)?Composable|class\s+MainActivity\b)/m);
+  if (sourceStart > 0) source = source.slice(sourceStart).trim();
+  // Accept fully qualified Composable annotations as well as the short form.
+  source = source.replace(/@androidx\.compose\.runtime\.Composable/g, "@Composable");
+  // If the model omitted the annotation but returned a Compose screen, add it to the first screen function.
+  if (!/@Composable\s+(?:(?:private|internal)\s+)?fun\s+[A-Za-z_]\w*\s*\(/m.test(source)) {
+    const functionMatch = /(?:^|\n)(\s*(?:(?:private|internal)\s+)?fun\s+([A-Za-z_]\w*)\s*\()/m.exec(source);
+    const hasComposeUi = /\b(?:Text|Button|OutlinedTextField|TextField|Column|Row|Box|Scaffold|LazyColumn|Card|Checkbox|Surface|CircularProgressIndicator)\s*\(/.test(source);
+    if (functionMatch && hasComposeUi && !/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(source)) {
+      const insertion = functionMatch.index + (functionMatch[0].startsWith("\n") ? 1 : 0);
+      source = source.slice(0, insertion) + "@Composable\n" + source.slice(insertion);
+    }
+  }
+  // Full Activity output is accepted as a compatibility fallback.
+  if (/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(source) && /setContent\s*\{/.test(source)) {
+    return { appName: "تطبيقي الجديد", packageName: "", summary: prompt.trim().replace(/\s+/g, " ").slice(0, 480), mainActivity: source };
+  }
   const composable = /@Composable\s+(?:(?:private|internal)\s+)?fun\s+([A-Za-z_]\w*)\s*\(/m.exec(source);
-  if (!composable) throw new Error("لم يرجع الذكاء الاصطناعي دالة واجهة Compose. أعد المحاولة؛ لم يتم إنشاء مشروع ناقص.");
+  if (!composable) {
+    const excerpt = source.replace(/\s+/g, " ").slice(0, 180);
+    throw new Error("لم يرجع الذكاء الاصطناعي دالة Compose قابلة للاستخدام. بداية الاستجابة: " + (excerpt || "استجابة فارغة"));
+  }
   const originalName = composable[1];
   if (originalName !== "GeneratedAppScreen") {
     const namePattern = new RegExp("\\bfun\\s+" + originalName + "\\s*\\(");
     source = source.replace(namePattern, "fun GeneratedAppScreen(");
   }
   source = source.replace(/^\s*package\s+[^\r\n]+\s*$/gm, "").trim();
-  if (!/@Composable\s+(?:(?:private|internal)\s+)?fun\s+GeneratedAppScreen\s*\(/m.test(source)) {
-    throw new Error("تعذر تجهيز دالة واجهة التطبيق.");
-  }
   return { appName: "تطبيقي الجديد", packageName: "", summary: prompt.trim().replace(/\s+/g, " ").slice(0, 480), mainActivity: source };
 }
 function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void {
-  if (app.mainActivity.length > MAX_SOURCE_LENGTH) throw new Error("كود الواجهة الناتج أكبر من الحد المسموح.");
-  const source = app.mainActivity.trim();
-  if (!/@Composable\s+(?:(?:private|internal)\s+)?fun\s+GeneratedAppScreen\s*\(/m.test(source)) {
-    throw new Error("لم يتم العثور على واجهة التطبيق GeneratedAppScreen.");
+  if (app.mainActivity.length > MAX_SOURCE_LENGTH) throw new Error("كود التطبيق الناتج أكبر من الحد المسموح.");
+  let source = app.mainActivity.replace(/^\uFEFF/, "").trim();
+  if (/\b(GROQ_API_KEY|GEMINI_API_KEY|GH_TOKEN|BUILD_TOKEN|ADMIN_PASSWORD)\b/.test(source)) throw new Error("تم رفض كود يحتوي على مؤشرات لمفاتيح أو أسرار.");
+  const fullActivity = /class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(source) && /setContent\s*\{/.test(source);
+  if (fullActivity) {
+    source = source.replace(/^\s*package\s+[^\r\n]+\s*$/gm, "").trim();
+    const imports = source.split(/\r?\n/).filter(line => /^\s*import\s+/.test(line));
+    const body = source.split(/\r?\n/).filter(line => !/^\s*import\s+/.test(line) && !/^\s*package\s+/.test(line)).join("\n").trim();
+    const required = ["import android.os.Bundle", "import androidx.activity.ComponentActivity", "import androidx.activity.compose.setContent", "import androidx.compose.foundation.layout.fillMaxSize", "import androidx.compose.material3.MaterialTheme", "import androidx.compose.material3.Surface", "import androidx.compose.ui.Modifier"];
+    app.mainActivity = "package " + expectedPackage + "\n\n" + Array.from(new Set(required.concat(imports))).join("\n") + "\n\n" + body;
+  } else {
+    if (!/@Composable\s+(?:(?:private|internal)\s+)?fun\s+GeneratedAppScreen\s*\(/m.test(source)) throw new Error("لم يتم العثور على واجهة Compose GeneratedAppScreen.");
+    const imports = source.split(/\r?\n/).filter(line => /^\s*import\s+/.test(line));
+    const body = source.split(/\r?\n/).filter(line => !/^\s*import\s+/.test(line) && !/^\s*package\s+/.test(line)).join("\n").trim();
+    const required = ["import android.os.Bundle", "import androidx.activity.ComponentActivity", "import androidx.activity.compose.setContent", "import androidx.compose.foundation.layout.fillMaxSize", "import androidx.compose.material3.MaterialTheme", "import androidx.compose.material3.Surface", "import androidx.compose.runtime.Composable", "import androidx.compose.ui.Modifier"];
+    const activity = ["class MainActivity : ComponentActivity() {", "    override fun onCreate(savedInstanceState: Bundle?) {", "        super.onCreate(savedInstanceState)", "        setContent {", "            MaterialTheme {", "                Surface(modifier = Modifier.fillMaxSize()) {", "                    GeneratedAppScreen()", "                }", "            }", "        }", "    }", "}"].join("\n");
+    app.mainActivity = "package " + expectedPackage + "\n\n" + Array.from(new Set(required.concat(imports))).join("\n") + "\n\n" + activity + "\n\n" + body;
   }
-  if (/\b(GROQ_API_KEY|GEMINI_API_KEY|GH_TOKEN|BUILD_TOKEN|ADMIN_PASSWORD)\b/.test(source)) {
-    throw new Error("تم رفض كود يحتوي على مؤشرات لمفاتيح أو أسرار.");
-  }
-  const imports = source.split(/\r?\n/).filter(line => /^\s*import\s+/.test(line));
-  const declarations = source.split(/\r?\n/).filter(line => !/^\s*import\s+/.test(line) && !/^\s*package\s+/.test(line)).join("\n").trim();
-  const baseImports = [
-    "import android.os.Bundle",
-    "import androidx.activity.ComponentActivity",
-    "import androidx.activity.compose.setContent",
-    "import androidx.compose.foundation.layout.fillMaxSize",
-    "import androidx.compose.material3.MaterialTheme",
-    "import androidx.compose.material3.Surface",
-    "import androidx.compose.ui.Modifier"
-  ];
-  const allImports = Array.from(new Set(baseImports.concat(imports)));
-  const activity = [
-    "class MainActivity : ComponentActivity() {",
-    "    override fun onCreate(savedInstanceState: Bundle?) {",
-    "        super.onCreate(savedInstanceState)",
-    "        setContent {",
-    "            MaterialTheme {",
-    "                Surface(modifier = Modifier.fillMaxSize()) {",
-    "                    GeneratedAppScreen()",
-    "                }",
-    "            }",
-    "        }",
-    "    }",
-    "}"
-  ].join("\n");
-  app.mainActivity = "package " + expectedPackage + "\n\n" + allImports.join("\n") + "\n\n" + activity + "\n\n" + declarations;
   app.packageName = expectedPackage;
-  if (!/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(app.mainActivity) || !/setContent\s*\{/.test(app.mainActivity)) {
-    throw new Error("تعذر إنشاء هيكل Android الأساسي.");
-  }
+  if (!/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(app.mainActivity) || !/setContent\s*\{/.test(app.mainActivity)) throw new Error("تعذر إنشاء هيكل Android الأساسي.");
   app.appName = app.appName.replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 48) || "تطبيقي الجديد";
 }
 function systemPrompt(packageName: string): string {
   return [
     "You are an expert Android Jetpack Compose UI developer.",
-    "Generate ONLY a Kotlin Compose screen function, not a full Android project.",
-    "Your entire answer must be Kotlin source code only. No JSON, no Markdown fences, no explanations.",
-    "The required entry point is exactly: @Composable fun GeneratedAppScreen() { ... }",
-    "Do NOT write package declarations, Activity, ComponentActivity, onCreate, MainActivity, or setContent. The platform creates these.",
-    "Include every additional import needed by your screen at the top of the answer.",
-    "Use only Jetpack Compose and Material 3 already included in the project. Do not use third-party libraries, resources, images, network, files, services, or additional Android components.",
-    "Implement the requested features with real local Compose state using remember and mutableStateOf. Use concise, reliable code.",
-    "Use Arabic labels and an RTL-friendly layout when the request is Arabic. Provide sensible validation and empty states.",
-    "Avoid excessive code. Focus on the core requested workflow, a polished usable screen, and code that compiles.",
-    "The Android package name is managed by the platform; do not output it: " + packageName
+    "Generate ONLY one concise Kotlin function named GeneratedAppScreen that creates the requested screen.",
+    "Use this exact signature: @Composable fun GeneratedAppScreen() { ... }.",
+    "Output raw Kotlin source only. No JSON, no Markdown fences, no explanations or preamble.",
+    "Include additional imports only when necessary; the platform adds the Activity, package and standard imports.",
+    "Use basic stable Compose Material 3 elements: Column, Row, Text, Button, OutlinedTextField, Checkbox, Card and LazyColumn.",
+    "Do NOT use KeyboardOptions, KeyboardActions, Icons, TopAppBar, NavigationDrawer, Scaffold, experimental APIs, external libraries, resources, images, network, files or additional Android components.",
+    "Implement real local UI state with remember and mutableStateOf. Keep the screen compact and focused on the user's requested features.",
+    "Use Arabic labels for Arabic prompts and organize the UI for right-to-left reading.",
+    "Do not include secrets, API keys, passwords or tokens.",
+    "The package is assigned by the platform; do not output a package declaration: " + packageName
   ].join("\n");
 }
 async function reserveDevice(db: D1Database, deviceId: string, limit: number): Promise<boolean> {
