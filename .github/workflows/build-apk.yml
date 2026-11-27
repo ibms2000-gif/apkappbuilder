@@ -83,6 +83,23 @@ jobs:
           imports = [line for line in imports if not line.endswith(".KeyboardOptions") and not line.endswith(".KeyboardActions")]
           source_body = chr(10).join(body_lines)
           auto_imports = set(imports)
+          # Add the standard Compose namespaces so generated screens do not depend on AI remembering imports.
+          auto_imports.update({
+              "import androidx.compose.foundation.*",
+              "import androidx.compose.foundation.layout.*",
+              "import androidx.compose.foundation.lazy.*",
+              "import androidx.compose.foundation.text.*",
+              "import androidx.compose.material3.*",
+              "import androidx.compose.runtime.*",
+              "import androidx.compose.runtime.saveable.*",
+              "import androidx.compose.ui.*",
+              "import androidx.compose.ui.graphics.*",
+              "import androidx.compose.ui.platform.*",
+              "import androidx.compose.ui.text.*",
+              "import androidx.compose.ui.text.input.*",
+              "import androidx.compose.ui.text.style.*",
+              "import androidx.compose.ui.unit.*"
+          })
           if "KeyboardOptions" in source_body:
               auto_imports.add("import androidx.compose.foundation.text.KeyboardOptions")
           if "KeyboardActions" in source_body:
