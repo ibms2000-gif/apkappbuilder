@@ -1,0 +1,69 @@
+name: Delete Student App Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Project UUID to delete"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  delete-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete public GitHub Release and tag
+        env:
+          GH_TOKEN: \${{ github.token }}
+          PROJECT_ID: \${{ inputs.project_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "Invalid project ID"
+            exit 1
+          fi
+          TAG="student-app-$PROJECT_ID"
+          RELEASE_JSON="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null || printf '{}')"
+          RELEASE_ID="$(printf '%s' "$RELEASE_JSON" | jq -r '.id // empty')"
+          if [ -n "$RELEASE_ID" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+            echo "Deleted release $RELEASE_ID"
+          else
+            echo "No public release exists for $TAG"
+          fi
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" >/dev/null 2>&1 || true
+          echo "Deleted release assets and tag when present."
+
+      - name: Remove project record from the platform
+        env:
+          API_URL: \${{ secrets.APKAPPBUILDER_API_URL }}
+          BUILD_TOKEN: \${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
+          PROJECT_ID: \${{ inputs.project_id }}
+        run: |
+          set -euo pipefail
+          test -n "$API_URL"
+          test -n "$BUILD_TOKEN"
+          curl --fail --silent --show-error \
+            -X POST "$API_URL/api/build/deleted" \
+            -H "Authorization: Bearer $BUILD_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"project_id\":\"$PROJECT_ID\"}"
+
+      - name: Report deletion failure to the platform
+        if: failure()
+        env:
+          API_URL: \${{ secrets.APKAPPBUILDER_API_URL }}
+          BUILD_TOKEN: \${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
+          PROJECT_ID: \${{ inputs.project_id }}
+        run: |
+          if [ -n "\${API_URL:-}" ] && [ -n "\${BUILD_TOKEN:-}" ]; then
+            curl --silent --show-error \
+              -X POST "$API_URL/api/build/deletion-failed" \
+              -H "Authorization: Bearer $BUILD_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data "{\"project_id\":\"$PROJECT_ID\",\"error\":\"تعذر إكمال حذف الإصدار العام. راجع سجل GitHub Actions.\"}" || true
+          fi
