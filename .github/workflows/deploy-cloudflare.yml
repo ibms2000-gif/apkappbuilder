@@ -39,6 +39,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.APKAPPBUILDER_GH_TOKEN }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           put_secret() {
@@ -55,3 +56,4 @@ jobs:
           put_secret GEMINI_API_KEY "$GEMINI_API_KEY"
           put_secret GH_TOKEN "$GH_TOKEN"
           put_secret BUILD_TOKEN "$BUILD_TOKEN"
+          put_secret ADMIN_TOKEN "$ADMIN_TOKEN"
