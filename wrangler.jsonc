@@ -3,7 +3,7 @@
   "name": "apkappbuilder",
   "account_id": "1af045031826254cba5e2039a6454347",
   "main": "src/index.ts",
-  "compatibility_date": "2026-11-26",
+  "compatibility_date": "2026-11-27",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {"directory":"./public","binding":"ASSETS","run_worker_first":["/api/*"]},
   "observability": {"enabled":true,"traces":{"enabled":true}},
