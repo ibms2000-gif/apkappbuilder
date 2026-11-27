@@ -86,7 +86,7 @@ jobs:
               )
               for line in imports
           ]
-          source_body = "\n".join(body_lines)
+          source_body = chr(10).join(body_lines)
           auto_imports = set(imports)
           if ".background(" in source_body or ".background (" in source_body:
               auto_imports.add("import androidx.compose.foundation.background")
@@ -110,8 +110,8 @@ jobs:
               auto_imports.add("import androidx.compose.material.icons.twotone.*")
           file_annotation = ""
           if any(symbol in source_body for symbol in ("TopAppBar", "TopAppBarDefaults", "NavigationDrawerItem", "ModalNavigationDrawer")):
-              file_annotation = "@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)\n\n"
-          code = file_annotation + package_line + "\\n" + "\\n".join(sorted(auto_imports)) + "\\n\\n" + "\\n".join(body_lines).lstrip() + "\\n"
+              file_annotation = "@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)" + chr(10) * 2
+          code = file_annotation + package_line + chr(10) + chr(10).join(sorted(auto_imports)) + chr(10) * 2 + chr(10).join(body_lines).lstrip() + chr(10)
 
           os.makedirs("android-template/app/src/main/java", exist_ok=True)
           with open("android-template/app/src/main/java/MainActivity.kt", "w", encoding="utf-8") as f:
