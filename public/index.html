@@ -31,6 +31,12 @@ h2{font-size:20px;margin:0}.muted{color:#8696b1;font-size:13px}.usage{border:1px
 .empty{border:1px dashed #384861;border-radius:16px;padding:30px;text-align:center;color:#8090aa;grid-column:1/-1}
 .notice{display:none;padding:13px 15px;border-radius:12px;margin-top:14px;font-size:13px;line-height:1.7}
 .notice.show{display:block}.notice.error{background:#47242c;color:#ffc0c5}.notice.ok{background:#14392f;color:#a1ecd0}
+.progress-box{display:none;margin-top:14px;padding:14px;border:1px solid #ffffff18;background:#0e1a2b;border-radius:13px}
+.progress-box.show{display:block}.progress-top{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:#c5d5e8}
+.progress-track{height:8px;background:#26384e;border-radius:99px;overflow:hidden;margin-top:12px}
+.progress-bar{height:100%;width:34%;border-radius:99px;background:linear-gradient(90deg,#42b7a9,#91edce,#42b7a9);animation:working 1.5s ease-in-out infinite}
+@keyframes working{0%{transform:translateX(220%)}100%{transform:translateX(-320%)}}
+
 footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-size:12px;line-height:1.8;text-align:center}
 @media(max-width:620px){.hero{padding-top:42px}.panel{padding:16px}.row{grid-template-columns:1fr}.row .btn{width:100%}.section-head{align-items:start;gap:8px;flex-direction:column}}
 </style>
@@ -49,6 +55,11 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
 <textarea id="prompt" maxlength="5000" placeholder="أنشئ تطبيقاً لإدارة المصروفات اليومية. أريد إضافة المصروف مع التصنيف والتاريخ، وعرض مجموع المصروفات لهذا الشهر، ورسماً يوضح المصروفات حسب التصنيف، مع حفظ البيانات داخل الهاتف..."></textarea>
 <div class="row"><div class="hint">كلما كان الوصف أوضح كانت النتيجة أفضل. الحد الأقصى 5000 حرف.</div><button class="btn" id="generate">✦ أنشئ التطبيق</button></div>
 <div id="notice" class="notice"></div>
+<div id="generationProgress" class="progress-box" role="status" aria-live="polite">
+  <div class="progress-top"><strong>نعمل على إنشاء تطبيقك</strong><span id="progressMessage">نرسل وصفك إلى الذكاء الاصطناعي…</span></div>
+  <div class="progress-track"><div class="progress-bar"></div></div>
+  <div class="hint">قد يتغير زمن الاستجابة بحسب ضغط خدمات الذكاء الاصطناعي. لا تغلق الصفحة أثناء التوليد.</div>
+</div>
 <div class="usage"><span>حصتك التجريبية اليوم</span><strong id="quota">جارٍ التحميل…</strong></div>
 </div>
 </section>
@@ -64,16 +75,43 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
   async function api(path,options){
     options=options||{};
     const headers=Object.assign({"content-type":"application/json"},options.headers||{});
-    const response=await fetch(path,Object.assign({},options,{headers}));
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"تعذر تنفيذ الطلب.");
-    return data;
+    let timeoutId=null;
+    if(path==="/api/generate"&&!options.signal){
+      const controller=new AbortController();
+      options.signal=controller.signal;
+      timeoutId=setTimeout(()=>controller.abort(),150000);
+    }
+    try{
+      const response=await fetch(path,Object.assign({},options,{headers}));
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||"تعذر تنفيذ الطلب.");
+      return data;
+    }catch(error){
+      if(error&&error.name==="AbortError")throw new Error("استغرق الاتصال وقتاً أطول من المتوقع. قد يكون مزود الذكاء الاصطناعي مشغولاً؛ أعد المحاولة لاحقاً.");
+      throw error;
+    }finally{if(timeoutId)clearTimeout(timeoutId);}
   }
   function notice(message,type){
     $("notice").textContent=message;$("notice").className="notice show "+(type||"ok");
   }
+  function startProgress(){
+    const box=$("generationProgress");
+    const label=$("progressMessage");
+    const steps=[
+      "نرسل وصفك إلى الذكاء الاصطناعي…",
+      "يفهم المطلوب ويخطط لواجهة التطبيق…",
+      "يكتب كود Android وواجهة الاستخدام…",
+      "نراجع بنية الكود قبل حفظ المشروع…",
+      "نتأكد من جاهزية المشروع للبناء…"
+    ];
+    let index=0;
+    box.classList.add("show");
+    label.textContent=steps[0];
+    const timer=setInterval(()=>{index=(index+1)%steps.length;label.textContent=steps[index];},4500);
+    return ()=>{clearInterval(timer);box.classList.remove("show");};
+  }
   function esc(value){return String(value||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-  function label(status){return ({generated:"تم التوليد — ينتظر إعداد البناء",building:"جارٍ بناء APK",ready:"APK جاهز للتنزيل",failed:"فشل البناء"})[status]||status;}
+  function label(status){return ({generating:"جارٍ إنشاء التطبيق",generated:"تم التوليد — ينتظر إعداد البناء",building:"جارٍ بناء APK",ready:"APK جاهز للتنزيل",failed:"فشل البناء"})[status]||status;}
   async function usage(){
     try{const d=await api("/api/usage?device_id="+encodeURIComponent(deviceId));$("quota").textContent=d.device.used+" / "+d.device.limit+" محاولات";}
     catch(e){$("quota").textContent="غير متاح";}
@@ -117,13 +155,14 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
     if(creatorName.length<2){notice("أدخل اسم الطالب أو منشئ التطبيق أولاً.","error");return;}
     if(prompt.length<12){notice("اكتب وصفاً أوضح للتطبيق (12 حرفاً على الأقل).","error");return;}
     const button=$("generate");button.disabled=true;button.textContent="جارٍ توليد التطبيق…";
-    notice("يحلّل الذكاء الاصطناعي فكرتك ويكتب كود Android. قد تستغرق العملية بعض الوقت.","ok");
+    notice("بدأت عملية التوليد. ستظهر هنا مراحل التقدم حتى اكتمال الاستجابة.","ok");
+    const stopProgress=startProgress();
     try{
       const d=await api("/api/generate",{method:"POST",body:JSON.stringify({prompt:prompt,appName:$("appName").value.trim(),creatorName:creatorName,deviceId:deviceId})});
       notice(d.message||"تم إنشاء المشروع.","ok");$("prompt").value="";
       await refreshProjects();await usage();if(d.status==="building")pollProject(d.projectId);
     }catch(e){notice(e.message,"error");await usage();}
-    finally{button.disabled=false;button.textContent="✦ أنشئ التطبيق";}
+    finally{stopProgress();button.disabled=false;button.textContent="✦ أنشئ التطبيق";}
   });
   refreshProjects().catch(e=>notice(e.message,"error"));usage();
 })();
