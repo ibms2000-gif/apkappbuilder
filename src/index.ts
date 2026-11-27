@@ -1,6 +1,5 @@
 interface Env {
   DB: D1Database;
-  BUILDS: R2Bucket;
   ASSETS: Fetcher;
   GROQ_API_KEY?: string;
   GEMINI_API_KEY?: string;
@@ -18,7 +17,6 @@ interface Env {
 type Provider = "groq" | "gemini";
 type GeneratedApp = { appName: string; packageName: string; summary: string; mainActivity: string };
 const MAX_SOURCE_LENGTH = 70000;
-const MAX_APK_BYTES = 50 * 1024 * 1024;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: {
@@ -166,10 +164,12 @@ async function dispatchBuild(env: Env, projectId: string): Promise<void> {
 }
 async function handleGenerate(request: Request, env: Env): Promise<Response> {
   if (!env.DB) return json({ error: "قاعدة بيانات D1 غير مربوطة." }, 503);
-  let body: { prompt?: unknown; deviceId?: unknown; appName?: unknown };
+  let body: { prompt?: unknown; deviceId?: unknown; appName?: unknown; creatorName?: unknown };
   try { body = await request.json() as typeof body; } catch { return json({ error: "بيانات الطلب غير صالحة." }, 400); }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length < 12 || prompt.length > 5000) return json({ error: "اكتب وصفاً من 12 إلى 5000 حرف." }, 400);
+  const creatorName = typeof body.creatorName === "string" ? body.creatorName.trim().replace(/[<>\\r\\n]/g, "").slice(0, 80) : "";
+  if (creatorName.length < 2) return json({ error: "أدخل اسم الطالب أو منشئ التطبيق (حرفان على الأقل)." }, 400);
   if (!validDeviceId(body.deviceId)) return json({ error: "معرّف الجهاز غير صالح." }, 400);
   const deviceId = body.deviceId;
   const limit = readLimit(env.DEVICE_DAILY_LIMIT, 2);
@@ -181,11 +181,11 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
     const appName = typeof body.appName === "string" && body.appName.trim()
       ? body.appName.trim().replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 48) : result.app.appName;
     await env.DB.prepare(
-      "INSERT INTO projects (id, device_id, prompt, app_name, package_name, main_activity, summary, provider, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generated')"
-    ).bind(id, deviceId, prompt, appName, packageName, result.app.mainActivity, result.app.summary, result.provider).run();
+      "INSERT INTO projects (id, device_id, prompt, app_name, creator_name, package_name, main_activity, summary, provider, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'generated')"
+    ).bind(id, deviceId, prompt, appName, creatorName, packageName, result.app.mainActivity, result.app.summary, result.provider).run();
     let buildStarted = false;
     let message = "تم توليد الكود. أضف إعدادات GitHub Actions لتشغيل البناء تلقائياً.";
-    if (env.GH_TOKEN && env.BUILD_TOKEN && env.BUILDS) {
+    if (env.GH_TOKEN && env.BUILD_TOKEN) {
       try {
         await env.DB.prepare("UPDATE projects SET status = 'building', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), id).run();
         await dispatchBuild(env, id);
@@ -205,19 +205,18 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
 async function handleProject(request: Request, env: Env, id: string): Promise<Response> {
   const deviceId = new URL(request.url).searchParams.get("device_id");
   if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const p = await env.DB.prepare("SELECT id, app_name, summary, provider, status, error_message, created_at FROM projects WHERE id = ? AND device_id = ?")
-    .bind(id, deviceId).first<{ id: string; app_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string }>();
+  const p = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects WHERE id = ? AND device_id = ?")
+    .bind(id, deviceId).first<{ id: string; app_name: string; creator_name: string; summary: string; provider: string; status: string; error_message: string | null; created_at: string; release_url: string | null; apk_url: string | null; report_url: string | null }>();
   if (!p) return json({ error: "المشروع غير موجود." }, 404);
   return json({
-    projectId: p.id, appName: p.app_name, summary: p.summary, provider: p.provider, status: p.status,
-    error: p.error_message, createdAt: p.created_at,
-    downloadUrl: p.status === "ready" ? "/api/download/" + p.id + "?device_id=" + encodeURIComponent(deviceId) : null
+    projectId: p.id, appName: p.app_name, creatorName: p.creator_name, summary: p.summary, provider: p.provider, status: p.status,
+    error: p.error_message, createdAt: p.created_at, releaseUrl: p.release_url, downloadUrl: p.apk_url, reportUrl: p.report_url
   });
 }
 async function handleList(request: Request, env: Env): Promise<Response> {
   const deviceId = new URL(request.url).searchParams.get("device_id");
   if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const rows = await env.DB.prepare("SELECT id, app_name, summary, provider, status, error_message, created_at FROM projects WHERE device_id = ? ORDER BY created_at DESC LIMIT 30").bind(deviceId).all();
+  const rows = await env.DB.prepare("SELECT id, app_name, creator_name, summary, provider, status, error_message, created_at, release_url, apk_url, report_url FROM projects WHERE device_id = ? ORDER BY created_at DESC LIMIT 30").bind(deviceId).all();
   return json({ projects: rows.results || [] });
 }
 async function handleUsage(request: Request, env: Env): Promise<Response> {
@@ -240,28 +239,33 @@ async function isBuildAuthorized(request: Request, env: Env): Promise<boolean> {
 async function buildSource(request: Request, env: Env): Promise<Response> {
   if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
   const id = new URL(request.url).searchParams.get("project_id") || "";
-  const p = await env.DB.prepare("SELECT id, app_name, package_name, main_activity FROM projects WHERE id = ?")
-    .bind(id).first<{ id: string; app_name: string; package_name: string; main_activity: string }>();
+  const p = await env.DB.prepare("SELECT id, app_name, creator_name, package_name, main_activity, summary, created_at FROM projects WHERE id = ?")
+    .bind(id).first<{ id: string; app_name: string; creator_name: string; package_name: string; main_activity: string; summary: string; created_at: string }>();
   if (!p) return json({ error: "المشروع غير موجود." }, 404);
-  return json({ project_id: p.id, app_name: p.app_name, package_name: p.package_name, main_activity: p.main_activity });
+  return json({ project_id: p.id, app_name: p.app_name, creator_name: p.creator_name, package_name: p.package_name, main_activity: p.main_activity, summary: p.summary, created_at: p.created_at });
 }
-async function uploadBuild(request: Request, env: Env): Promise<Response> {
+async function buildPublished(request: Request, env: Env): Promise<Response> {
   if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
-  const id = request.headers.get("x-project-id") || "";
-  if (!env.BUILDS) return json({ error: "تخزين R2 غير مربوط." }, 503);
+  const body = await request.json() as { project_id?: string; release_url?: string; apk_url?: string; report_url?: string };
+  const id = body.project_id || "";
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "معرّف المشروع غير صالح." }, 400);
-  if (!(await env.DB.prepare("SELECT id FROM projects WHERE id = ?").bind(id).first())) return json({ error: "المشروع غير موجود." }, 404);
-  const length = Number(request.headers.get("content-length") || 0);
-  if (length > MAX_APK_BYTES) return json({ error: "حجم APK أكبر من 50 ميجابايت." }, 413);
-  if (!request.body) return json({ error: "ملف APK فارغ." }, 400);
-  const key = "apks/" + id + ".apk";
-  await env.BUILDS.put(key, request.body, {
-    httpMetadata: { contentType: "application/vnd.android.package-archive", cacheControl: "private, no-store" },
-    customMetadata: { projectId: id }
-  });
-  await env.DB.prepare("UPDATE projects SET status = 'ready', apk_key = ?, error_message = NULL, updated_at = ? WHERE id = ?")
-    .bind(key, new Date().toISOString(), id).run();
-  return json({ ok: true, status: "ready" });
+  const safeGitHubUrl = (value: string | undefined, needsDownload: boolean): boolean => {
+    if (!value) return false;
+    try {
+      const u = new URL(value);
+      return u.protocol === "https:" && u.hostname === "github.com" &&
+        u.pathname.startsWith("/ibms2000-gif/apkappbuilder/releases/") &&
+        (!needsDownload || u.pathname.includes("/download/"));
+    } catch { return false; }
+  };
+  if (!safeGitHubUrl(body.release_url, false) || !safeGitHubUrl(body.apk_url, true) || !safeGitHubUrl(body.report_url, true)) {
+    return json({ error: "روابط GitHub Releases غير صالحة." }, 400);
+  }
+  const result = await env.DB.prepare(
+    "UPDATE projects SET status = 'ready', release_url = ?, apk_url = ?, report_url = ?, error_message = NULL, updated_at = ? WHERE id = ?"
+  ).bind(body.release_url, body.apk_url, body.report_url, new Date().toISOString(), id).run();
+  if (!result.success || result.meta.changes === 0) return json({ error: "المشروع غير موجود أو لم يتم تحديثه." }, 404);
+  return json({ ok: true, status: "ready", release_url: body.release_url, apk_url: body.apk_url, report_url: body.report_url });
 }
 async function buildFailure(request: Request, env: Env): Promise<Response> {
   if (!(await isBuildAuthorized(request, env))) return json({ error: "غير مصرح." }, 401);
@@ -270,21 +274,6 @@ async function buildFailure(request: Request, env: Env): Promise<Response> {
   await env.DB.prepare("UPDATE projects SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?")
     .bind((body.error || "فشل بناء APK. راجع سجل GitHub Actions.").slice(0, 1000), new Date().toISOString(), body.project_id).run();
   return json({ ok: true });
-}
-async function downloadApk(request: Request, env: Env, id: string): Promise<Response> {
-  const deviceId = new URL(request.url).searchParams.get("device_id");
-  if (!validDeviceId(deviceId)) return json({ error: "معرّف الجهاز مفقود." }, 400);
-  const p = await env.DB.prepare("SELECT app_name, apk_key FROM projects WHERE id = ? AND device_id = ? AND status = 'ready'")
-    .bind(id, deviceId).first<{ app_name: string; apk_key: string | null }>();
-  if (!p?.apk_key) return json({ error: "ملف APK غير جاهز أو غير موجود." }, 404);
-  const object = await env.BUILDS.get(p.apk_key);
-  if (!object) return json({ error: "تعذر العثور على ملف APK." }, 404);
-  const name = p.app_name.replace(/[^\p{L}\p{N}_-]/gu, "_").slice(0, 40) || "android-app";
-  return new Response(object.body, { headers: {
-    "content-type": "application/vnd.android.package-archive",
-    "content-disposition": 'attachment; filename="' + name + '.apk"',
-    "cache-control": "private, no-store", "content-length": String(object.size)
-  }});
 }
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -300,7 +289,7 @@ export default {
         const d = url.pathname.match(/^\/api\/download\/([0-9a-f-]{36})$/i);
         if (request.method === "GET" && d) return await downloadApk(request, env, d[1]);
         if (request.method === "GET" && url.pathname === "/api/build/source") return await buildSource(request, env);
-        if (request.method === "PUT" && url.pathname === "/api/build/upload") return await uploadBuild(request, env);
+        if (request.method === "POST" && url.pathname === "/api/build/published") return await buildPublished(request, env);
         if (request.method === "POST" && url.pathname === "/api/build/failure") return await buildFailure(request, env);
         return json({ error: "المسار غير موجود." }, 404);
       } catch (error) {
