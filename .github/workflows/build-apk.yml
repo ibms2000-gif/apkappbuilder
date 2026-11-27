@@ -31,6 +31,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -291,11 +293,5 @@ jobs:
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
           if [ -n "${API_URL:-}" ] && [ -n "${BUILD_TOKEN:-}" ]; then
-            python3 - <<'PY' || true
-            import json, os, urllib.request
-            payload = {"project_id": os.environ["PROJECT_ID"], "error": "فشل بناء التطبيق أو إنشاء تقرير PDF أو نشر GitHub Release. راجع سجل GitHub Actions."}
-            req = urllib.request.Request(os.environ["API_URL"] + "/api/build/failure", data=json.dumps(payload).encode(), headers={"Authorization":"Bearer " + os.environ["BUILD_TOKEN"],"Content-Type":"application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as response:
-                print(response.read().decode())
-            PY
+            python3 -c 'import json,os,urllib.request; p={"project_id":os.environ["PROJECT_ID"],"error":"فشل بناء التطبيق أو إنشاء تقرير PDF أو نشر GitHub Release. راجع سجل GitHub Actions."}; r=urllib.request.Request(os.environ["API_URL"]+"/api/build/failure",data=json.dumps(p).encode("utf-8"),headers={"Authorization":"Bearer "+os.environ["BUILD_TOKEN"],"Content-Type":"application/json"},method="POST"); print(urllib.request.urlopen(r,timeout=15).read().decode("utf-8"))' || true
           fi
