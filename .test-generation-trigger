@@ -1,1 +1,1 @@
-Retry live generation after latest Worker deployment completed successfully.
+Live smoke test after automatic Compose wildcard import fix.
