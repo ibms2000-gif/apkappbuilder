@@ -61,9 +61,9 @@ jobs:
           const html = fs.readFileSync("/tmp/generated-pwa.html", "utf8");
           const sw = fs.readFileSync("/tmp/generated-pwa-sw.js", "utf8");
           const icon = fs.readFileSync("/tmp/generated-pwa-icon.svg", "utf8");
-          if (m.display !== "standalone" || !m.start_url || !m.scope || !Array.isArray(m.icons) || m.icons.length < 2) throw new Error("Invalid generated PWA manifest");
+          if (m.display !== "standalone" || !m.start_url || !m.scope || !Array.isArray(m.icons) || !m.icons.some(i => i.sizes === "192x192") || !m.icons.some(i => i.sizes === "512x512")) throw new Error("Invalid generated PWA manifest icons");
           if (!html.includes('rel="manifest"') || !html.includes("إضافة إلى الشاشة الرئيسية") || !html.includes("localStorage")) throw new Error("PWA installation or local-storage bridge missing");
-          if (!sw.includes("skipWaiting") || !sw.includes("caches.open") || !sw.includes("/app/")) throw new Error("PWA service worker cache is incomplete");
+          if (!sw.includes("skipWaiting") || !sw.includes("caches.open") || !sw.includes("/app/") || !sw.includes("icon-192.png") || !sw.includes("icon-512.png")) throw new Error("PWA service worker cache is incomplete");
           if (!icon.includes("<svg")) throw new Error("PWA icon is invalid");
           console.log("PASS: generated PWA page, standalone manifest, install instructions, service worker and app icon.");
           NODE

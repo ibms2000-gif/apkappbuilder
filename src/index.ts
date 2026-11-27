@@ -396,6 +396,8 @@ async function servePwaManifest(env: Env, id: string): Promise<Response> {
     dir: "rtl",
     icons: [
       { src: base + "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
       { src: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" }
     ]
   };
@@ -416,7 +418,7 @@ function servePwaServiceWorker(id: string): Response {
   const base = "/app/" + id + "/";
   const script = `const CACHE_NAME = "apkapp-pwa-${id}-v1";
 const APP_URL = "${base}";
-const SHELL = [APP_URL, APP_URL + "manifest.webmanifest", APP_URL + "icon.svg", "/icons/apple-touch-icon.png"];
+const SHELL = [APP_URL, APP_URL + "manifest.webmanifest", APP_URL + "icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
