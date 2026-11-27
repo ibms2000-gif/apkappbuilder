@@ -314,7 +314,8 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" "release-output/$REPORT_NAME" --repo "$GITHUB_REPOSITORY" --clobber
-          REPORT_URL="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq --arg name "$REPORT_NAME" '.assets[] | select(.name == $name) | .browser_download_url')"
+          RELEASE_JSON="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          REPORT_URL="$(printf '%s' "$RELEASE_JSON" | jq -r --arg name "$REPORT_NAME" '.assets[] | select(.name == $name) | .browser_download_url')"
           test -n "$REPORT_URL"
           echo "REPORT_URL=$REPORT_URL" >> "$GITHUB_ENV"
 
