@@ -7,12 +7,17 @@ on:
         description: "Project UUID stored in the platform database"
         required: true
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - ".build-requests/**"
 
 permissions:
   contents: write
 
 concurrency:
-  group: apk-build-${{ inputs.project_id }}
+  group: apk-build-${{ inputs.project_id || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -22,6 +27,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve project ID
+        id: project
+        env:
+          INPUT_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          PROJECT_ID="$INPUT_PROJECT_ID"
+          if [ -z "$PROJECT_ID" ]; then
+            REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^\\.build-requests/[0-9a-fA-F-]{36}\\.txt$' | head -n 1 || true)"
+            test -n "$REQUEST_FILE" || (echo "No project rebuild request file found in this commit." && exit 1)
+            PROJECT_ID="$(tr -d '[:space:]' < "$REQUEST_FILE")"
+          fi
+          if ! [[ "$PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo "Invalid project UUID supplied to build workflow."
+            exit 1
+          fi
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "Resolved project ID: $PROJECT_ID"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -40,8 +64,9 @@ jobs:
           gradle-version: "8.9"
 
       - name: Download generated Android source and student details
+        id: download_source
         env:
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
           API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
@@ -54,6 +79,7 @@ jobs:
             -o /tmp/generated-app.json
 
       - name: Prepare generated Android application
+        id: prepare_source
         run: |
           python3 - <<'PY'
           import json, os, re
@@ -72,6 +98,17 @@ jobs:
               raise SystemExit("MainActivity validation failed")
           if len(creator.strip()) < 2:
               raise SystemExit("Student creator name is required")
+
+          # Normalize known fully-qualified package mistakes produced by AI models.
+          code = code.replace(
+              "androidx.compose.ui.text.input.KeyboardOptions",
+              "androidx.compose.foundation.text.KeyboardOptions"
+          ).replace(
+              "androidx.compose.ui.text.input.KeyboardActions",
+              "androidx.compose.foundation.text.KeyboardActions"
+          )
+          if "androidx.compose.ui.text.input.KeyboardOptions" in code or "androidx.compose.ui.text.input.KeyboardActions" in code:
+              raise SystemExit("Compose keyboard API package normalization failed")
 
           # Normalize commonly omitted or mislocated Compose imports from AI output.
           lines = code.splitlines()
@@ -144,15 +181,21 @@ jobs:
           grep -n 'KeyboardOptions\|KeyboardActions' android-template/app/src/main/java/MainActivity.kt || true
 
       - name: Build debug APK
+        id: build_apk
         working-directory: android-template
         run: |
-          gradle --no-daemon assembleDebug \
+          set -o pipefail
+          if ! gradle --no-daemon assembleDebug \
             -PgeneratedPackage="$GENERATED_PACKAGE" \
-            -PgeneratedAppName="$GENERATED_APP_NAME"
+            -PgeneratedAppName="$GENERATED_APP_NAME" 2>&1 | tee /tmp/gradle-build.log; then
+            grep -E "e: file:|Unresolved reference|Type mismatch|Overload resolution ambiguity|Compilation error" /tmp/gradle-build.log | head -n 8 > /tmp/build-diagnostic.txt || true
+            exit 1
+          fi
 
       - name: Prepare public GitHub Release
+        id: prepare_release
         env:
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
           set -euo pipefail
           mkdir -p release-output
@@ -161,6 +204,7 @@ jobs:
           echo "APK_NAME=apkappbuilder-$PROJECT_ID.apk" >> "$GITHUB_ENV"
 
       - name: Install PDF and Arabic text libraries
+        id: install_pdf_tools
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -169,9 +213,10 @@ jobs:
           /tmp/pdf-venv/bin/pip install --disable-pip-version-check reportlab "qrcode[pil]" arabic-reshaper python-bidi
 
       - name: Create public GitHub Release and upload APK
+        id: publish_apk
         env:
           GH_TOKEN: ${{ github.token }}
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
           set -euo pipefail
           RELEASE_NOTES=$(printf "Student achievement application\\nCreator: %s\\nDescription: %s\\nProject ID: %s\\nGenerated by APK App Builder." "$CREATOR_NAME" "$PROJECT_SUMMARY" "$PROJECT_ID")
@@ -189,8 +234,9 @@ jobs:
           echo "APK_URL=$APK_URL" >> "$GITHUB_ENV"
 
       - name: Generate one-page Arabic student achievement PDF with QR code
+        id: generate_pdf
         env:
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
           API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
@@ -309,6 +355,7 @@ jobs:
           PY
 
       - name: Upload student report PDF to the same release
+        id: upload_pdf
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -320,8 +367,9 @@ jobs:
           echo "REPORT_URL=$REPORT_URL" >> "$GITHUB_ENV"
 
       - name: Mark project as published in D1
+        id: publish_project
         env:
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
           API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
@@ -339,12 +387,28 @@ jobs:
       - name: Report build failure
         if: failure()
         env:
-          PROJECT_ID: ${{ inputs.project_id }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
           API_URL: ${{ secrets.APKAPPBUILDER_API_URL }}
           BUILD_TOKEN: ${{ secrets.APKAPPBUILDER_BUILD_TOKEN }}
         run: |
-          if [ -n "${API_URL:-}" ] && [ -n "${BUILD_TOKEN:-}" ]; then
-            PAYLOAD="$(jq -n --arg id "$PROJECT_ID" --arg error "فشل بناء التطبيق أو إنشاء تقرير PDF أو نشر GitHub Release. راجع سجل GitHub Actions." '{project_id:$id,error:$error}')"
+          if [ -n "${API_URL:-}" ] && [ -n "${BUILD_TOKEN:-}" ] && [ -n "${PROJECT_ID:-}" ]; then
+            FAILED_PHASE="تهيئة بيئة البناء"
+            if [ "${{ steps.download_source.outcome }}" = "failure" ]; then FAILED_PHASE="جلب مصدر التطبيق من المنصة"; fi
+            if [ "${{ steps.prepare_source.outcome }}" = "failure" ]; then FAILED_PHASE="فحص وتهيئة كود Kotlin"; fi
+            if [ "${{ steps.build_apk.outcome }}" = "failure" ]; then FAILED_PHASE="ترجمة وبناء تطبيق Android"; fi
+            if [ "${{ steps.prepare_release.outcome }}" = "failure" ]; then FAILED_PHASE="تجهيز ملف APK للنشر"; fi
+            if [ "${{ steps.install_pdf_tools.outcome }}" = "failure" ]; then FAILED_PHASE="تجهيز أدوات تقرير PDF"; fi
+            if [ "${{ steps.publish_apk.outcome }}" = "failure" ]; then FAILED_PHASE="نشر ملف APK على GitHub Releases"; fi
+            if [ "${{ steps.generate_pdf.outcome }}" = "failure" ]; then FAILED_PHASE="إنشاء تقرير الإنجاز PDF"; fi
+            if [ "${{ steps.upload_pdf.outcome }}" = "failure" ]; then FAILED_PHASE="رفع تقرير الإنجاز PDF"; fi
+            if [ "${{ steps.publish_project.outcome }}" = "failure" ]; then FAILED_PHASE="تسجيل روابط التنزيل في قاعدة البيانات"; fi
+            DETAIL=""
+            if [ -s /tmp/build-diagnostic.txt ]; then DETAIL="$(tr '\n' ' ' < /tmp/build-diagnostic.txt | cut -c1-450)"; fi
+            RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            ERROR="تعذر إكمال المشروع في مرحلة: $FAILED_PHASE."
+            if [ -n "$DETAIL" ]; then ERROR="$ERROR تفاصيل الترجمة: $DETAIL"; fi
+            ERROR="$ERROR سجل التنفيذ: $RUN_URL"
+            PAYLOAD="$(jq -n --arg id "$PROJECT_ID" --arg error "$ERROR" '{project_id:$id,error:$error}')"
             curl --silent --show-error --max-time 15 \
               -X POST "$API_URL/api/build/failure" \
               -H "Authorization: Bearer $BUILD_TOKEN" \

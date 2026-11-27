@@ -83,6 +83,8 @@ function parseModelSource(text: string, prompt: string): GeneratedApp {
     source = source.replace(namePattern, "fun GeneratedAppScreen(");
   }
   source = source.replace(/^\s*package\s+[^\r\n]+\s*$/gm, "").trim();
+  source = source.replace(/androidx\.compose\.ui\.text\.input\.KeyboardOptions/g, "androidx.compose.foundation.text.KeyboardOptions")
+    .replace(/androidx\.compose\.ui\.text\.input\.KeyboardActions/g, "androidx.compose.foundation.text.KeyboardActions");
   return { appName: "تطبيقي الجديد", packageName: "", summary: prompt.trim().replace(/\s+/g, " ").slice(0, 480), mainActivity: source };
 }
 function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void {
@@ -116,7 +118,7 @@ function systemPrompt(packageName: string): string {
     "Output raw Kotlin source only. No JSON, no Markdown fences, no explanations or preamble.",
     "Include additional imports only when necessary; the platform adds the Activity, package and standard imports.",
     "Use basic stable Compose Material 3 elements: Column, Row, Text, Button, OutlinedTextField, Checkbox, Card and LazyColumn.",
-    "Do NOT use KeyboardOptions, KeyboardActions, Icons, TopAppBar, NavigationDrawer, Scaffold, experimental APIs, external libraries, resources, images, network, files or additional Android components.",
+    "You may use KeyboardOptions or KeyboardActions when useful. KeyboardOptions and KeyboardActions belong to androidx.compose.foundation.text; KeyboardType belongs to androidx.compose.ui.text.input. Never qualify KeyboardOptions or KeyboardActions with androidx.compose.ui.text.input.",
     "Implement real local UI state with remember and mutableStateOf. Keep the screen compact and focused on the user's requested features.",
     "Use Arabic labels for Arabic prompts and organize the UI for right-to-left reading.",
     "Do not include secrets, API keys, passwords or tokens.",
