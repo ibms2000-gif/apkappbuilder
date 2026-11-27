@@ -23,12 +23,10 @@ textarea{min-height:155px;resize:vertical;line-height:1.8}textarea:focus,input:f
 .btn{border:0;border-radius:13px;background:linear-gradient(135deg,#82edc7,#43b7a9);color:#08221e;font-weight:700;padding:13px 22px;cursor:pointer;min-height:50px;white-space:nowrap}
 .btn:disabled{opacity:.5;cursor:not-allowed}.section-head{display:flex;align-items:center;justify-content:space-between;margin:38px 0 15px}
 h2{font-size:20px;margin:0}.muted{color:#8696b1;font-size:13px}.usage{border:1px solid #ffffff16;background:#111c2d;border-radius:14px;padding:12px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;color:#9eabc1;font-size:13px}
-.usage strong{color:#e8f5ef}.projects{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:13px;margin-bottom:65px}
-.project{border:1px solid #ffffff16;background:#111c2d;border-radius:16px;padding:16px}.project-top{display:flex;justify-content:space-between;gap:10px;align-items:start}
-.project h3{font-size:16px;margin:0 0 6px}.status{font-size:11px;padding:5px 9px;border-radius:99px;background:#26344b;color:#b4c5de;white-space:nowrap}
+.project{border:1px solid #ffffff16;background:#111c2d;border-radius:16px;padding:18px;margin-top:18px;text-align:right}.project-top{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.project h3{font-size:17px;margin:0 0 6px}.status{font-size:11px;padding:5px 9px;border-radius:99px;background:#26344b;color:#b4c5de;white-space:nowrap}
 .status.ready{background:#123a30;color:#8be8c4}.status.failed{background:#44252d;color:#ffb0b7}.status.building{background:#41351c;color:#f4d18a}
-.project p{font-size:13px;color:#98a8c0;line-height:1.7;min-height:44px}.project .btn{min-height:39px;padding:8px 14px;font-size:13px;width:100%}.project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.btn-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:11px;background:linear-gradient(135deg,#82edc7,#43b7a9);color:#08221e;font-weight:700;padding:9px 10px;font-size:12px}.btn-link.secondary{background:#26364e;color:#dce7f8;border:1px solid #40516b}.student{font-size:12px;color:#b7c7dc;margin-top:5px}
-.empty{border:1px dashed #384861;border-radius:16px;padding:30px;text-align:center;color:#8090aa;grid-column:1/-1}
+.project p{font-size:13px;color:#98a8c0;line-height:1.8}.project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.btn-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:11px;background:linear-gradient(135deg,#82edc7,#43b7a9);color:#08221e;font-weight:700;padding:12px 10px;font-size:13px}.btn-link.secondary{background:#26364e;color:#dce7f8;border:1px solid #40516b}.download-note{margin-top:14px;padding:13px;border:1px solid #3c907e66;border-radius:12px;background:#13362e88;color:#a1ecd0;font-size:13px;line-height:1.8}.result-title{margin-top:25px;font-size:18px}
 .notice{display:none;padding:13px 15px;border-radius:12px;margin-top:14px;font-size:13px;line-height:1.7}
 .notice.show{display:block}.notice.error{background:#47242c;color:#ffc0c5}.notice.ok{background:#14392f;color:#a1ecd0}
 .progress-box{display:none;margin-top:14px;padding:14px;border:1px solid #ffffff18;background:#0e1a2b;border-radius:13px}
@@ -63,9 +61,9 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
 <div class="usage"><span>حصتك التجريبية اليوم</span><strong id="quota">جارٍ التحميل…</strong></div>
 </div>
 </section>
-<section><div class="section-head"><div><h2>مشاريعي</h2><span class="muted">آخر 30 مشروعاً على هذا الجهاز</span></div><a class="btn-link secondary" href="https://github.com/ibms2000-gif/apkappbuilder/releases" target="_blank" rel="noopener">استعراض جميع مشاريع الطلاب المنشورة</a></div><div class="projects" id="projects"><div class="empty">لا توجد مشاريع بعد. ابدأ بوصف تطبيقك الأول.</div></div></section>
+<section id="resultArea" hidden><h2 class="result-title">نتيجة مشروعك</h2><article id="projectResult" class="project" aria-live="polite"></article></section>
 </main>
-<footer><div class="wrap">نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.<br>يتم نشر APK وتقرير الإنجاز علناً في GitHub Releases. لا تستخدم بيانات طالب دون موافقته وموافقة المدرسة.</div></footer>
+<footer><div class="wrap">نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.</div></footer>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
@@ -111,41 +109,51 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
     return ()=>{clearInterval(timer);box.classList.remove("show");};
   }
   function esc(value){return String(value||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-  function label(status){return ({generating:"جارٍ إنشاء التطبيق",generated:"تم التوليد — ينتظر إعداد البناء",building:"جارٍ بناء APK",ready:"APK جاهز للتنزيل",failed:"فشل البناء"})[status]||status;}
+  function label(status){return ({generating:"جارٍ إنشاء التطبيق",generated:"تم إنشاء كود التطبيق",building:"جارٍ بناء APK",ready:"التطبيق جاهز للتنزيل",failed:"تعذر بناء التطبيق"})[status]||status;}
   async function usage(){
     try{const d=await api("/api/usage?device_id="+encodeURIComponent(deviceId));$("quota").textContent=d.device.used+" / "+d.device.limit+" محاولات";}
     catch(e){$("quota").textContent="غير متاح";}
   }
-  function card(p){
-    const status=p.status||"generated",id=p.id||p.projectId;
-    const el=document.createElement("article");el.className="project";
+  function renderProject(p){
+    const status=p.status||"generated";
+    const apk=p.downloadUrl||p.apk_url||"";
+    const report=p.reportUrl||p.report_url||"";
     let action="";
-    if(status==="ready")action='<div class="project-actions"><a class="btn-link" href="'+esc(p.apk_url)+'" target="_blank" rel="noopener">تنزيل APK</a><a class="btn-link secondary" href="'+esc(p.report_url)+'" target="_blank" rel="noopener">تقرير PDF</a></div><div class="hint" style="margin-top:8px"><a href="'+esc(p.release_url)+'" target="_blank" rel="noopener" style="color:#8bdcc6">فتح صفحة المشروع العامة</a></div>';
-    if(status==="failed")action='<div class="hint">'+esc(p.error_message||p.error||"راجع سجل البناء في GitHub Actions.")+'</div>';
-    if(status==="generated")action='<div class="hint">تم حفظ كود التطبيق. في انتظار إعداد البناء.</div>';
-    el.innerHTML='<div class="project-top"><div><h3>'+esc(p.app_name||p.appName)+'</h3><span class="muted">'+esc(p.provider||"")+'</span><div class="student">منشئ المشروع: '+esc(p.creator_name||p.creatorName||"")+'</div></div><span class="status '+esc(status)+'">'+esc(label(status))+'</span></div><p>'+esc(p.summary||p.error_message||p.error||"تطبيق Android مولّد من وصفك.")+'</p>'+action;
-    return el;
+    if(status==="ready"&&apk&&report){
+      action='<div class="download-note"><strong>اكتمل تطبيقك بنجاح.</strong><br>احرص على تنزيل ملف التطبيق (APK) وتقرير الإنجاز (PDF) قبل مغادرة هذه الصفحة، واحتفظ بنسخة منهما.</div><div class="project-actions"><a class="btn-link" href="'+esc(apk)+'" target="_blank" rel="noopener">تنزيل التطبيق APK</a><a class="btn-link secondary" href="'+esc(report)+'" target="_blank" rel="noopener">تنزيل تقرير الإنجاز PDF</a></div>';
+    }else if(status==="failed"){
+      action='<div class="hint">'+esc(p.error||p.error_message||"تعذر بناء التطبيق. أعد المحاولة لاحقاً.")+'</div>';
+    }else if(status==="generated"){
+      action='<div class="hint">تم إنشاء الكود، لكن خدمة بناء APK غير متاحة حالياً. أبلغ المعلم.</div>';
+    }else{
+      action='<div class="hint">جارٍ تجهيز ملفات التطبيق والتقرير. أبقِ هذه الصفحة مفتوحة.</div>';
+    }
+    $("projectResult").innerHTML=
+      '<div class="project-top"><div><h3>'+esc(p.appName||p.app_name||"تطبيقك")+'</h3><div class="student">منشئ المشروع: '+esc(p.creatorName||p.creator_name||"")+'</div></div><span class="status '+esc(status)+'">'+esc(label(status))+'</span></div>'+
+      '<p>'+esc(p.summary||"تطبيق Android تم إنشاؤه من وصفك.")+'</p>'+action;
+    $("resultArea").hidden=false;
   }
-  async function refreshProjects(){
-    const data=await api("/api/projects?device_id="+encodeURIComponent(deviceId));
-    const box=$("projects");box.innerHTML="";
-    if(!data.projects.length){box.innerHTML='<div class="empty">لا توجد مشاريع بعد. ابدأ بوصف تطبيقك الأول.</div>';return;}
-    data.projects.forEach(p=>{box.appendChild(card(p));if(p.status==="building")pollProject(p.id);});
+  async function loadProject(id){
+    const p=await api("/api/projects/"+id+"?device_id="+encodeURIComponent(deviceId));
+    renderProject(p);
+    return p;
   }
   async function pollProject(id){
     if(polling.has(id))return;polling.add(id);
     try{
       for(let i=0;i<90;i++){
         await new Promise(resolve=>setTimeout(resolve,7000));
-        const p=await api("/api/projects/"+id+"?device_id="+encodeURIComponent(deviceId));
-        if(p.status!=="building"){
-          await refreshProjects();
-          if(p.status==="ready")notice("اكتمل بناء التطبيق ونشر APK وتقرير PDF للعامة.","ok");
-          if(p.status==="failed")notice(p.error||"فشل البناء. راجع سجل GitHub Actions.","error");
+        const p=await loadProject(id);
+        if(p.status==="ready"){
+          notice("اكتمل التطبيق. نزّل ملف APK وتقرير الإنجاز قبل مغادرة الصفحة.","ok");
+          return;
+        }
+        if(p.status==="failed"){
+          notice(p.error||"تعذر بناء التطبيق. أبلغ المعلم أو أعد المحاولة لاحقاً.","error");
           return;
         }
       }
-      notice("ما زال البناء جارياً. يمكنك العودة لاحقاً إلى قائمة مشاريعك.","ok");
+      notice("ما زال البناء جارياً. أبقِ هذه الصفحة مفتوحة حتى تظهر روابط التنزيل.","ok");
     }catch(e){notice(e.message,"error");}
     finally{polling.delete(id);}
   }
@@ -159,12 +167,16 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
     const stopProgress=startProgress();
     try{
       const d=await api("/api/generate",{method:"POST",body:JSON.stringify({prompt:prompt,appName:$("appName").value.trim(),creatorName:creatorName,deviceId:deviceId})});
-      notice(d.message||"تم إنشاء المشروع.","ok");$("prompt").value="";
-      await refreshProjects();await usage();if(d.status==="building")pollProject(d.projectId);
+      $("prompt").value="";
+      await usage();
+      const project=await loadProject(d.projectId);
+      if(project.status==="building")pollProject(d.projectId);
+      else if(project.status==="ready")notice("اكتمل التطبيق. نزّل ملف APK وتقرير الإنجاز قبل مغادرة الصفحة.","ok");
+      else notice(d.message||"تم إنشاء المشروع.","ok");
     }catch(e){notice(e.message,"error");await usage();}
     finally{stopProgress();button.disabled=false;button.textContent="✦ أنشئ التطبيق";}
   });
-  refreshProjects().catch(e=>notice(e.message,"error"));usage();
+  usage();
 })();
 </script>
 </body>
