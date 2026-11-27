@@ -35,28 +35,23 @@ function validDeviceId(value: unknown): value is string {
 function makePackageName(id: string): string {
   return "com.apkappbuilder.generated.p" + id.replace(/-/g, "").slice(0, 10);
 }
-function parseModelJson(text: string): GeneratedApp {
-  let cleaned = text.trim();
+function parseModelSource(text: string, prompt: string): GeneratedApp {
+  let source = text.replace(/^\\uFEFF/, '').trim();
   const fence = String.fromCharCode(96).repeat(3);
-  if (cleaned.startsWith(fence)) {
-    const lines = cleaned.split(/\r?\n/);
+  if (source.startsWith(fence)) {
+    const lines = source.split(/\\r?\\n/);
     lines.shift();
     if (lines[lines.length - 1]?.trim() === fence) lines.pop();
-    cleaned = lines.join("\n").trim();
+    source = lines.join('\\n').trim();
   }
-  const first = cleaned.indexOf("{");
-  const last = cleaned.lastIndexOf("}");
-  if (first < 0 || last <= first) throw new Error("لم يرجع نموذج الذكاء الاصطناعي كوداً منظماً. جرّب وصفاً أقصر وأكثر تحديداً.");
-  let parsed: Partial<GeneratedApp>;
-  try { parsed = JSON.parse(cleaned.slice(first, last + 1)) as Partial<GeneratedApp>; }
-  catch { throw new Error("تعذر قراءة استجابة الذكاء الاصطناعي. جرى رفض النتيجة قبل إنشاء التطبيق."); }
-  if (typeof parsed.mainActivity !== "string") throw new Error("لم يُنشأ ملف MainActivity.kt.");
-  return {
-    appName: typeof parsed.appName === "string" ? parsed.appName.slice(0, 48) : "تطبيقي الجديد",
-    packageName: typeof parsed.packageName === "string" ? parsed.packageName : "",
-    summary: typeof parsed.summary === "string" ? parsed.summary.slice(0, 500) : "",
-    mainActivity: parsed.mainActivity
-  };
+  source = source.replace(/^\\s*```(?:kotlin|kt|java)?\\s*$/gim, '').replace(/^\\s*```\\s*$/gm, '').trim();
+  const lines = source.split(/\\r?\\n/);
+  const firstCodeLine = lines.findIndex(line => /^\\s*(?:import\\s+|package\\s+|class\\s+MainActivity\\b|@file:|@Suppress\\b)/.test(line));
+  if (firstCodeLine >= 0) source = lines.slice(firstCodeLine).join('\\n').trim();
+  if (!source || !/class\\s+MainActivity\\s*:\\s*ComponentActivity\\s*\\(/.test(source)) {
+    throw new Error('لم يرجع النموذج ملف Kotlin كاملاً يحتوي على MainActivity. أعد المحاولة بوصف أبسط.');
+  }
+  return { appName: 'تطبيقي الجديد', packageName: '', summary: prompt.trim().replace(/\\s+/g, ' ').slice(0, 480), mainActivity: source };
 }
 function validateGeneratedApp(app: GeneratedApp, expectedPackage: string): void {
   if (app.mainActivity.length > MAX_SOURCE_LENGTH) throw new Error("الكود الناتج أكبر من الحد المسموح.");
