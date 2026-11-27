@@ -42,15 +42,20 @@ function parseModelSource(text: string, prompt: string): GeneratedApp {
   if (source.startsWith(fence)) {
     const lines = source.split(/\r?\n/);
     lines.shift();
-    if (lines[lines.length - 1]?.trim() === fence) lines.pop();
+    if (lines[lines.length - 1] && lines[lines.length - 1].trim() === fence) lines.pop();
     source = lines.join("\n").trim();
   }
   source = source.replace(/^\s*```(?:kotlin|kt|java)?\s*$/gim, "").replace(/^\s*```\s*$/gm, "").trim();
-  const lines = source.split(/\r?\n/);
-  const firstCodeLine = lines.findIndex(line => /^\s*(?:import\s+|package\s+|class\s+MainActivity\b|@file:|@Suppress\b)/.test(line));
-  if (firstCodeLine >= 0) source = lines.slice(firstCodeLine).join("\n").trim();
-  if (!source || !/class\s+MainActivity\s*:\s*ComponentActivity\s*\(/.test(source)) {
-    throw new Error("لم يرجع النموذج ملف Kotlin كاملاً يحتوي على MainActivity. أعد المحاولة بوصف أبسط.");
+  const composable = /@Composable\s+(?:(?:private|internal)\s+)?fun\s+([A-Za-z_]\w*)\s*\(/m.exec(source);
+  if (!composable) throw new Error("لم يرجع الذكاء الاصطناعي دالة واجهة Compose. أعد المحاولة؛ لم يتم إنشاء مشروع ناقص.");
+  const originalName = composable[1];
+  if (originalName !== "GeneratedAppScreen") {
+    const namePattern = new RegExp("\\bfun\\s+" + originalName + "\\s*\\(");
+    source = source.replace(namePattern, "fun GeneratedAppScreen(");
+  }
+  source = source.replace(/^\s*package\s+[^\r\n]+\s*$/gm, "").trim();
+  if (!/@Composable\s+(?:(?:private|internal)\s+)?fun\s+GeneratedAppScreen\s*\(/m.test(source)) {
+    throw new Error("تعذر تجهيز دالة واجهة التطبيق.");
   }
   return { appName: "تطبيقي الجديد", packageName: "", summary: prompt.trim().replace(/\s+/g, " ").slice(0, 480), mainActivity: source };
 }
