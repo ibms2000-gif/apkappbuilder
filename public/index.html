@@ -35,7 +35,14 @@ h2{font-size:20px;margin:0}.muted{color:#8696b1;font-size:13px}.usage{border:1px
 .progress-bar{height:100%;width:34%;border-radius:99px;background:linear-gradient(90deg,#42b7a9,#91edce,#42b7a9);animation:working 1.5s ease-in-out infinite}
 @keyframes working{0%{transform:translateX(220%)}100%{transform:translateX(-320%)}}
 
-footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-size:12px;line-height:1.8;text-align:center}
+footer{padding:30px 0 38px;border-top:1px solid #ffffff13;color:#71809a;font-size:12px;line-height:1.8;text-align:center}
+.footer-purpose{font-size:16px;font-weight:700;color:#dce8f6;margin-bottom:7px}
+.footer-school{font-size:14px;font-weight:700;color:#8ee5c8;margin-bottom:19px}
+.footer-credits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:900px;margin:0 auto 18px}
+.footer-credit{padding:11px 13px;border:1px solid #ffffff14;background:#111c2d;border-radius:12px}
+.footer-role{display:block;color:#8d9db5;font-size:11px;margin-bottom:4px}
+.footer-name{display:block;color:#e1eaf6;font-size:13px;font-weight:600}
+@media(max-width:620px){.footer-credits{grid-template-columns:1fr;max-width:420px}.footer-purpose{font-size:15px}}
 @media(max-width:620px){.hero{padding-top:42px}.panel{padding:16px}.row{grid-template-columns:1fr}.row .btn{width:100%}.section-head{align-items:start;gap:8px;flex-direction:column}}
 </style>
 </head>
@@ -63,7 +70,16 @@ footer{padding:22px 0 35px;border-top:1px solid #ffffff13;color:#71809a;font-siz
 </section>
 <section id="resultArea" hidden><h2 class="result-title">نتيجة مشروعك</h2><article id="projectResult" class="project" aria-live="polite"></article></section>
 </main>
-<footer><div class="wrap">نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.</div></footer>
+<footer><div class="wrap">
+<div class="footer-purpose">هذه منصة تعليمية تساعد الطلاب على إنجاز مهامهم</div>
+<div class="footer-school">مدرسة عبدالله بن سلمة وثانوية الإمام الطبري</div>
+<div class="footer-credits">
+  <div class="footer-credit"><span class="footer-role">برمجة وتصميم المعلم</span><span class="footer-name">إبراهيم محمد صميلي</span></div>
+  <div class="footer-credit"><span class="footer-role">وكيل الشؤون التعليمية</span><span class="footer-name">عبدالعزيز محمد صميلي</span></div>
+  <div class="footer-credit"><span class="footer-role">مدير المدرسة</span><span class="footer-name">الحسين محمد قحل</span></div>
+</div>
+<div>نسخة تجريبية أولية · لا تضع كلمات مرور أو مفاتيح API أو بيانات حساسة في وصف التطبيق.</div>
+</div></footer>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
